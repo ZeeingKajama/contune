@@ -72,3 +72,21 @@ button.acc { border-color:var(--accent); color:var(--accent); }
   .rc-act { grid-column:3; }
 }
 @media (max-width:900px) { .rtop { grid-template-columns:1fr; } }
+.abulk { display:flex; align-items:center; gap:12px; margin-bottom:8px; font-size:13px; }
+.abulk label { display:inline-flex; align-items:center; gap:4px; cursor:pointer; }
+.anote { margin:6px 0 0; font-size:12px; color:var(--t3); }
+.agrp { font-weight:600; font-variant-numeric:tabular-nums; }
+.atbl .c-chk { width:24px; }
+.atbl tr.achild td { background:color-mix(in srgb, var(--t3) 6%, transparent); color:var(--t2); }
+.atbl tr.achild .c-tgt, .atbl tr.achild .c-lv { padding-left:14px; }
+@media (max-width:700px) {
+  .atbl, .atbl tbody { display:block; }
+  .atbl thead { display:none; }
+  .atbl tr { display:grid; grid-template-columns:auto auto auto 1fr auto; grid-template-areas:"chk lv kind tgt time" "msg msg msg msg ack" "st st st st st"; gap:2px 8px; align-items:center; padding:8px 4px; border-bottom:1px solid var(--line); }
+  .atbl td { display:block; padding:0; border:0; min-width:0; }
+  .atbl td:empty { display:none; }
+  .atbl .c-chk { grid-area:chk; width:auto; } .atbl .c-lv { grid-area:lv; } .atbl .c-kind { grid-area:kind; color:var(--t3); font-size:12px; }
+  .atbl .c-tgt { grid-area:tgt; overflow-wrap:anywhere; } .atbl .c-time { grid-area:time; font-size:12px; color:var(--t3); }
+  .atbl .c-msg { grid-area:msg; overflow-wrap:anywhere; } .atbl .c-ack { grid-area:ack; } .atbl .c-st { grid-area:st; font-size:12px; color:var(--t3); }
+  .atbl tr.achild .c-tgt, .atbl tr.achild .c-lv { padding-left:0; }
+}
