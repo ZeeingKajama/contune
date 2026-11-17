@@ -2,7 +2,7 @@
 // 근거는 매니저가 결정론적으로 모으고 LLM은 문장만 쓴다. 모든 문장에 근거 칩이 붙고, 칩을 누르면 그 근거를 볼 곳으로 간다.
 // LLM이 없거나 답이 계약에 맞지 않으면 규칙 문장이 보이고 그렇게 표시한다. 순수 함수는 DOM 없이 import된다.
 import { api, poll } from './api.js';
-import { el, esc, fmtNum, fmtClock, DASH, LEVEL_TEXT, openDrawer, closeDrawer, info } from './ui.js';
+import { el, esc, fmtNum, fmtClock, DASH, LEVEL_TEXT, openDrawer, closeDrawer, info, keepFocus } from './ui.js';
 
 export const AI_MARK = '✦';
 const enc = encodeURIComponent;
@@ -227,7 +227,7 @@ export function openTrace(alertId, ctx = {}) {
     const sig = JSON.stringify([t.state, t.final, t.a, t.b, t.top, t.diag, t.ai, t.alert && t.alert.state]);
     if (sig !== lastSig) {
       lastSig = sig;
-      d.body.replaceChildren(traceView(t, ctx));
+      keepFocus(d.body, () => d.body.replaceChildren(traceView(t, ctx))); // 3초 갱신이 포커스를 날리지 않게
     }
     if (t.final && !['pending', 'wait'].includes((t.ai || {}).state)) stop();
   }, 3000);
