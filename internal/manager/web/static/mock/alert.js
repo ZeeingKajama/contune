@@ -1,16 +1,21 @@
 // 알림 · 장애 위험 · 장애 기록
-import { MIN, SEC, KST, fmtN, fmtKst } from './util.js';
+import { MIN, SEC, HOUR, KST, fmtN, fmtKst } from './util.js';
 import { FEATURE_TITLE, CHECK, BASELINE, holdsOf, liveHolds, autoRelease, openIndex, openAt, makeHold, stats as holdStats } from './riskhold.js';
 import { hostsView, isDead } from './world.js';
-import { bizAt, riskAt } from './signal.js';
+import { bizAt, riskAt, serviceAt, surgeRef, surgeStart } from './signal.js';
 import { logEvents } from './biz.js';
 import { flowOf } from './world.js';
 import { IDS as EXIT_IDS } from './exit.js';
+import { shapeFor, profileSplit } from './core.js';
+import { LITE, DEMO, SUMMIT } from './profile.js';
+import { userId } from './auth.js';
 
 const ok = (body, status = 200) => ({ status, body });
 const err = (status, msg) => ({ status, body: { error: msg } });
 const num = (v) => (v === null || v === '' || Number.isNaN(Number(v)) ? 0 : Number(v));
 const actor = 'user:web(127.0.0.1)';
+// 시연판: 알림 확인 · 위험 요인 표시에 남는 '누가'는 로그인한 사용자(감사 기록의 '누가'는 index.js · audit.js가 맞춘다)
+const who = () => (SUMMIT ? `user:${userId()}` : actor);
 
 const FEATURES = ['cpu_max', 'mem_max', 'hosts_hot', 'queue', 'p99', 'lag', 'log_errors', 'runs_failed'];
 const RULE_W = [1, 1, 1, 2, 2, 1, 2, 1];
@@ -18,6 +23,8 @@ const LOGREG_W = [0.4, 0.2, 0.5, 1.1, 0.9, 0.6, 0.7, 0.3];
 const weights = (arr) => Object.fromEntries(FEATURES.map((f, i) => [f, arr[i]]));
 
 const groupOfHost = (c, id) => (c.w.hosts.find((h) => h.id === id) || { group: '' }).group;
+// 세계에 있는 서버인지(체험판은 9대뿐이라 없는 서버를 가리키는 알림 · 위험 요인을 내지 않는다)
+const hasHost = (c, id) => c.w.hosts.some((h) => h.id === id);
 
 // 지금 조건에서 나오는 알림 전부(firing·resolved). id는 조건마다 고정.
 function buildAlerts(c) {
@@ -29,7 +36,7 @@ function buildAlerts(c) {
   if (dw && dw.state === 'crit') {
     out.push(mk({ id: 1, ts: w.base - 40 * MIN, kind: 'host', dedup_key: 'host:dw-02', level: 'crit', state: 'firing', host: 'dw-02', group: dw.group, name: 'host.mem.used_pct', value: dw.mem, message: `dw-02 · 메모리 ${Math.round(dw.mem)}% (위험 90%)` }));
   }
-  out.push(mk({ id: 2, ts: now - 170 * SEC, kind: 'host', dedup_key: 'host:ext-04', level: 'crit', state: 'firing', host: 'ext-04', group: groupOfHost(c, 'ext-04'), name: '', message: 'ext-04 · 무응답' }));
+  if (hasHost(c, 'ext-04')) out.push(mk({ id: 2, ts: now - 170 * SEC, kind: 'host', dedup_key: 'host:ext-04', level: 'crit', state: 'firing', host: 'ext-04', group: groupOfHost(c, 'ext-04'), name: '', message: 'ext-04 · 무응답' }));
   // 실행 실패: 재시도가 남지 않은 최신 시도
   for (const r of w.runs) {
     const flow = flowOf(w, r.flow_id);
@@ -39,6 +46,8 @@ function buildAlerts(c) {
     if (latest !== r && !isExt) continue;
     const dead = latest === r && isDead(r, flow);
     if (!dead && !isExt) continue;
+    // 시연판: 끝난 지 24시간(세계를 만든 때 기준)이 넘은 실행의 실패 알림은 내지 않는다(실행 이력 격자의 실패 칸은 그대로)
+    if (SUMMIT && !isExt && r.ended_at && r.ended_at < w.base - 24 * HOUR) continue;
     const id = isExt ? 3 : 1000 + r.seq;
     const lastEv = r.events[r.events.length - 1];
     out.push(mk({
@@ -53,18 +62,31 @@ function buildAlerts(c) {
     const ex = { ...c.sig, exact: true };
     const b = bizAt(now, ex);
     const execId = w.startRun.exec_id;
-    if (m1 && m1.state !== 'ok') out.push(mk({ id: 11, ts: now - 210 * SEC, kind: 'host', dedup_key: 'host:match-01', level: m1.state, state: 'firing', host: 'match-01', group: m1.group, name: 'host.cpu.pct', value: m1.cpu, message: `match-01 · CPU ${Math.round(m1.cpu)}% (경고 70%)` }));
-    out.push(mk({ id: 12, ts: now - 33 * SEC, kind: 'tile', dedup_key: 'tile:matching/대기 큐', level: 'crit', state: 'firing', group: '매매체결', name: 'biz.order.queue', exec_id: execId, value: b['biz.order.queue'], message: `체결 · 대기 큐 ${fmtN(b['biz.order.queue'])}건 (위험 2,000)` }));
-    out.push(mk({ id: 13, ts: now - 82 * SEC, kind: 'tile', dedup_key: 'tile:matching/RT p99', level: 'crit', state: 'firing', group: '매매체결', name: 'biz.order.latency_p99_ms', exec_id: execId, value: b['biz.order.latency_p99_ms'], message: `체결 · RT p99 ${fmtN(b['biz.order.latency_p99_ms'])}ms (위험 200)` }));
-    const n = logEvents(c, { levels: ['error'], host: 'match-01', from: now - 150 * SEC, limit: 2000 }).length;
-    out.push(mk({ id: 14, ts: now - 80 * SEC, kind: 'log', dedup_key: 'log:match-01:matching', level: 'crit', state: 'firing', host: 'match-01', group: '매매체결', name: 'log.error.count', exec_id: execId, value: n, message: `match-01 · matching (E) 로그 ${n}건` }));
-    out.push(mk({ id: 15, ts: now - 50 * SEC, kind: 'exit', dedup_key: `exit:${EXIT_IDS.crash}`, level: 'crit', state: 'resolved', host: 'match-01', group: '매매체결', name: 'matching_svc', exec_id: execId, message: 'matching_svc 종료 · match-01 — book_insert에서 NULL 역참조(주소 0x8)', resolved_at: now - 50 * SEC + MIN }));
+    const ref = surgeRef(c.sig); // 폭주 기준 시각: full은 지금, 체험판은 base(알림 시각이 머문 만큼 밀리지 않는다)
+    if (m1 && m1.state !== 'ok') out.push(mk({ id: 11, ts: ref - 210 * SEC, kind: 'host', dedup_key: 'host:match-01', level: m1.state, state: 'firing', host: 'match-01', group: m1.group, name: 'host.cpu.pct', value: m1.cpu, message: `match-01 · CPU ${Math.round(m1.cpu)}% (경고 70%)` }));
+    out.push(mk({ id: 12, ts: ref - 33 * SEC, kind: 'tile', dedup_key: 'tile:matching/대기 큐', level: 'crit', state: 'firing', group: '매매체결', name: 'biz.order.queue', exec_id: execId, value: b['biz.order.queue'], message: `체결 · 대기 큐 ${fmtN(b['biz.order.queue'])}건 (위험 2,000)` }));
+    out.push(mk({ id: 13, ts: ref - 82 * SEC, kind: 'tile', dedup_key: 'tile:matching/RT p99', level: 'crit', state: 'firing', group: '매매체결', name: 'biz.order.latency_p99_ms', exec_id: execId, value: b['biz.order.latency_p99_ms'], message: `체결 · RT p99 ${fmtN(b['biz.order.latency_p99_ms'])}ms (위험 200)` }));
+    const n = logEvents(c, { levels: ['error'], host: 'match-01', from: ref - 150 * SEC, to: ref, limit: 2000 }).length;
+    out.push(mk({ id: 14, ts: ref - 80 * SEC, kind: 'log', dedup_key: 'log:match-01:matching', level: 'crit', state: 'firing', host: 'match-01', group: '매매체결', name: 'log.error.count', exec_id: execId, value: n, message: `match-01 · matching (E) 로그 ${n}건` }));
+    if (!DEMO) out.push(mk({ id: 15, ts: now - 50 * SEC, kind: 'exit', dedup_key: `exit:${EXIT_IDS.crash}`, level: 'crit', state: 'resolved', host: 'match-01', group: '매매체결', name: 'matching_svc', exec_id: execId, message: 'matching_svc 종료 · match-01 — book_insert에서 NULL 역참조(주소 0x8)', resolved_at: now - 50 * SEC + MIN }));
   }
-  out.push(mk({ id: 21, ts: w.base - 5 * 3600000, kind: 'host', dedup_key: 'host:match-04', level: 'warn', state: 'resolved', host: 'match-04', group: '매매체결', name: 'host.cpu.pct', value: 72, message: 'match-04 · CPU 72% (경고 70%)', resolved_at: w.base - 5 * 3600000 + 8 * MIN }));
-  out.push(mk({ id: 22, ts: w.base - 26 * 3600000, kind: 'tile', dedup_key: 'tile:matching/히스토리 버퍼 사용률', level: 'warn', state: 'resolved', group: '매매체결', name: 'biz.order.histbuf_pct', value: 74, message: '체결 · 히스토리 버퍼 사용률 74% (경고 70%)', resolved_at: w.base - 26 * 3600000 + 12 * MIN }));
+  // 시연판: 벤더 패널의 위험 타일 둘(1분 시세량 하한 · 호가 갱신 값 끊김)에도 알림을 낸다. 문구는 매니저 alert.go tileMessage 꼴이고,
+  // 값 · 시각은 그 타일의 계열(core.js: base − 6분에 떨어짐, base − 45초부터 값 끊김)이 기준을 넘긴 때의 것이다. 로그 경로에 {exec_id}가 없어 실행 ID는 없다
+  if (SUMMIT && hasHost(c, 'feed-03') && hasHost(c, 'feed-02')) {
+    out.push(mk({ id: 16, ts: w.base - 6 * MIN + 10 * SEC, kind: 'tile', dedup_key: 'tile:vendor/1분 시세량', level: 'crit', state: 'firing', host: 'feed-03', group: '정보분배', name: 'biz.vendor.count_1m', value: 4550, message: '정보 벤더 시세 · 1분 시세량 4,550건/분 · feed-03 (위험 하한 10,000)' }));
+    out.push(mk({ id: 17, ts: w.base - 15 * SEC, kind: 'tile', dedup_key: 'tile:vendor/호가 갱신', level: 'crit', state: 'firing', host: 'feed-02', group: '정보분배', name: 'biz.vendor.depth_1m', message: '정보 벤더 시세 · 호가 갱신 값 끊김 30초 · feed-02 (기준 30초)' }));
+  }
+  // 체험판: 종료 알림은 시간표의 그 종료(base − 126분, w.crashRun이 띄운 matching_svc)에 맞춘다. 해소 = 체결 서비스가 다시 뜬 때
+  const dead = DEMO && w.crashRun ? w.procs.find((p) => p.exit_id === EXIT_IDS.crash) : null;
+  if (dead) {
+    const again = w.procs.find((p) => p.exec_id === w.startRun.exec_id && p.service === 'matching' && !p.leader);
+    out.push(mk({ id: 15, ts: dead.ended_at, kind: 'exit', dedup_key: `exit:${EXIT_IDS.crash}`, level: 'crit', state: 'resolved', host: dead.host, group: groupOfHost(c, dead.host), name: 'matching_svc', exec_id: w.crashRun.exec_id, message: `matching_svc 종료 · ${dead.host} — book_insert에서 NULL 역참조(주소 0x8)`, resolved_at: again ? again.started_at : w.startRun.started_at }));
+  }
+  if (hasHost(c, 'match-04')) out.push(mk({ id: 21, ts: w.base - 5 * 3600000, kind: 'host', dedup_key: 'host:match-04', level: 'warn', state: 'resolved', host: 'match-04', group: '매매체결', name: 'host.cpu.pct', value: 72, message: 'match-04 · CPU 72% (경고 70%)', resolved_at: w.base - 5 * 3600000 + 8 * MIN }));
+  if (!LITE) out.push(mk({ id: 22, ts: w.base - 26 * 3600000, kind: 'tile', dedup_key: 'tile:matching/히스토리 버퍼 사용률', level: 'warn', state: 'resolved', group: '매매체결', name: 'biz.order.histbuf_pct', value: 74, message: '체결 · 히스토리 버퍼 사용률 74% (경고 70%)', resolved_at: w.base - 26 * 3600000 + 12 * MIN }));
   // 같은 알림이 되풀이되는 모양(화면에서 ×N으로 묶임). 진행 중 묶음은 실행 실패(시도 N)가 이미 보여 주므로
   // 해소된 것만 더한다(종 숫자·관제 이벤트 수를 시연 이야기 밖으로 늘리지 않게)
-  for (let i = 1; i <= 2; i++) {
+  for (let i = 1; !DEMO && i <= 2; i++) { // 시연판 · 체험판은 확인한 알림 수 그대로 둔다
     out.push(mk({ id: 40 + i, ts: w.base - (7 + i) * 3600000, kind: 'host', dedup_key: `host:match-04:cpu${i}`, level: 'warn', state: 'resolved', host: 'match-04', group: '매매체결', name: 'host.cpu.pct', value: 72, message: 'match-04 · CPU 72% (경고 70%)', resolved_at: w.base - (7 + i) * 3600000 + 6 * MIN }));
   }
   for (const a of out) {
@@ -93,7 +115,11 @@ function ack(c, m) {
   const id = Number(m[1]);
   const a = buildAlerts(c).find((x) => x.id === id);
   if (!a) return err(404, '알림을 찾을 수 없음');
-  if (!c.w.acks.has(id)) c.w.acks.set(id, { at: c.now, by: actor });
+  if (!c.w.acks.has(id)) {
+    c.w.acks.set(id, { at: c.now, by: who() });
+    // 체험판: 알림 확인도 감사 기록에 남긴다(매니저 alert.go ackDetail과 같은 글: 이름 @서버)
+    if (DEMO) c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor, action: 'alert.ack', target: String(id), detail: (a.name || a.message) + (a.host ? ` @${a.host}` : '') });
+  }
   return ok({ ok: true });
 }
 
@@ -141,6 +167,7 @@ function riskView(c) {
         at: now - 6 * MIN, by: 'user:operator', until: now + 4 * 3600000 - 6 * MIN, ended_at: 0, ended_by: '', end_note: '' });
     }
   }
+  for (const f of factors) f.where = f.where.filter((x) => x.kind !== 'host' || hasHost(c, x.id)); // 세계에 없는 서버는 뺀다
   autoRelease(c, factors);
   const live = liveHolds(w);
   const holdOf = new Map(live.map((h) => [h.feature, h]));
@@ -176,10 +203,23 @@ function risk(c) {
   return ok(riskView(c));
 }
 
+// 감사 기록의 학습 줄(매니저 risk/api.go와 같은 글)
+export const trainDetail = (mode, m) => `mode=${mode} kind=${m.kind} windows=${m.windows} positives=${m.positives} incidents=${m.incidents} auc=${Number(m.auc).toFixed(3)}`;
+// 시연판 감사 기록 씨앗(audit.js)용: 세계를 만든 때의 장애 기록으로 셈한 모델 칸(riskView와 같은 계산)
+export function seedModel(w) {
+  const all = w.incidents.filter((i) => i.source === 'seed' || i.source === 'auto');
+  const labels = all.filter((i) => i.source !== 'auto' || i.confirmed);
+  const unconfirmed = all.length - labels.length;
+  const excluded = all.reduce((n, i) => n + Math.round((i.end - i.start) / MIN) + 1, 0) + unconfirmed * 5;
+  return { kind: 'logreg', windows: 10080 - excluded, positives: labels.length * 5, incidents: labels.length, auc: 0.91 };
+}
+
 function train(c) {
   const v = riskView(c);
   if (!c.flags.rule) c.w.trainedAt = c.now;
   const m = v.model;
+  // 시연판: '지금 학습'도 감사 기록에 남긴다
+  if (SUMMIT) c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor, action: 'risk.train', target: 'risk', detail: trainDetail(v.mode, m) });
   return ok({ kind: m.kind, trained_at: c.flags.rule ? c.now : c.w.trainedAt, windows: m.windows, positives: m.positives, incidents: m.incidents, unconfirmed: m.unconfirmed, excluded: m.excluded, auc: m.auc, weights: m.weights, mode: v.mode, note: v.note });
 }
 
@@ -198,11 +238,11 @@ function listHolds(c) {
 
 function addHold(c) {
   const v = riskView(c);
-  const r = makeHold(c, c.json(), v.factors, actor);
+  const r = makeHold(c, c.json(), v.factors, who());
   if (r.error) return err(400, r.error);
   const h = r.hold;
   for (const x of liveHolds(c.w)) {
-    if (x.feature === h.feature) Object.assign(x, { ended_at: c.now, ended_by: actor, end_note: '바꿈' });
+    if (x.feature === h.feature) Object.assign(x, { ended_at: c.now, ended_by: who(), end_note: '바꿈' });
   }
   c.w.holds.unshift(h);
   const t = FEATURE_TITLE[h.feature];
@@ -215,7 +255,7 @@ function releaseHold(c, m) {
   const id = Number(m[1]);
   const h = holdsOf(c.w).find((x) => x.id === id && !x.ended_at);
   if (!h) return err(404, '확인 표시를 찾을 수 없음');
-  Object.assign(h, { ended_at: c.now, ended_by: actor, end_note: '해제' });
+  Object.assign(h, { ended_at: c.now, ended_by: who(), end_note: '해제' });
   c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor, action: 'risk.release', target: `risk:${h.feature}`, detail: `${FEATURE_TITLE[h.feature]} #${h.id}` });
   return { status: 204, body: null };
 }
@@ -235,7 +275,7 @@ function tsOf(v) {
 
 function incidentList(c) {
   const list = c.w.incidents.map((i) => ({ ...i }));
-  if (c.sig.surge) list.push({ id: 1000, start: c.now - 210 * SEC, end: 0, scope: '매매체결', title: '자동: 체결 · 대기 큐 위험', source: 'auto', note: '', confirmed: !!c.w.surgeConfirmed });
+  if (c.sig.surge) list.push({ id: 1000, start: surgeRef(c.sig) - 210 * SEC, end: 0, scope: '매매체결', title: '자동: 체결 · 대기 큐 위험', source: 'auto', note: '', confirmed: !!c.w.surgeConfirmed });
   return list;
 }
 
@@ -317,6 +357,43 @@ function riskDataset(c) {
 // 매니저(internal/manager/brief)와 같은 모양. 폭주 장면의 체결 알림(12·13·14)은 book_insert까지 따라가고,
 // ?llm=1이면 AI 초안(mock-llm)으로, 아니면 규칙 문장(LLM 미연결)으로 보인다.
 const TRACE_IDS = new Set([12, 13, 14, 11]);
+
+// 체험판: 함수 표 · 표본 수 · 호출 경로 · 지표를 프로파일 모양(core.js)과 신호에서 계산한다.
+// 같은 A·B 구간으로 /profile을 부른 타임머신 비교표(flame.js compareLeaf · tm.js topChanges)와 같은 숫자가 나온다.
+function liteCompare(c, A, B) {
+  const prof = (s) => profileSplit(...shapeFor(c, c.w.startRun, s.from, s.to), s.from, s.to);
+  const pa = prof(A), pb = prof(B);
+  const leafOf = (frames) => frames.split(';').pop();
+  const pct = (p, leaf) => (p.samples ? (p.stacks.filter((x) => leafOf(x.frames) === leaf).reduce((n, x) => n + x.samples, 0) / p.samples) * 100 : 0);
+  const r1 = (v) => Math.round(v * 10) / 10;
+  const fns = [...new Set([...pa.stacks, ...pb.stacks].map((x) => leafOf(x.frames)))]
+    .map((leaf) => ({ leaf, a: pct(pa, leaf), b: pct(pb, leaf) }))
+    .sort((x, y) => Math.abs(y.b - y.a) - Math.abs(x.b - x.a))
+    .slice(0, 5)
+    .map((x) => ({ leaf: x.leaf, pct_a: r1(x.a), pct_b: r1(x.b), diff: r1(x.b - x.a) }));
+  const top = fns.reduce((m, f) => (f.diff > m.diff ? f : m), fns[0]);
+  const best = pb.stacks.filter((x) => leafOf(x.frames) === top.leaf)[0]; // stacks는 표본 많은 순
+  const ex = { ...c.sig, exact: true };
+  const stat = (span, f) => {
+    let sum = 0, n = 0, max = -Infinity;
+    for (let t = span.from; t <= span.to; t += 5 * SEC) { const v = f(t); sum += v; n++; if (v > max) max = v; }
+    return { avg: sum / n, max };
+  };
+  const metrics = [
+    ['biz.order.in_tps', '주문 유입량', 'TPS', 'traffic', (t) => bizAt(t, ex)['biz.order.in_tps']],
+    ['svc.cpu.pct', '서비스 CPU 사용률', '%', 'saturation', (t) => serviceAt(t, ex)['job.cpu.pct']],
+    ['biz.order.latency_p99_ms', 'p99 응답 시간', 'ms', 'latency', (t) => bizAt(t, ex)['biz.order.latency_p99_ms']],
+  ].map(([name, title, unit, signal, f]) => {
+    const x = stat(A, f), y = stat(B, f);
+    return { name, title, unit, signal, a: Math.round(x.avg), b: Math.round(y.avg), peak: Math.round(y.max) };
+  });
+  return { samplesA: pa.samples, samplesB: pb.samples, fns, top, path: best ? best.frames.split(';') : [top.leaf], path_pct: best && pb.samples ? r1((best.samples / pb.samples) * 100) : 0, metrics };
+}
+// 원인 추적 글에 쓰는 토막(추적 서랍 · 브리핑이 같은 말을 쓴다)
+const ppOf = (v) => `${v >= 0 ? '+' : ''}${Number(v).toFixed(1)}%p`;
+const inflowText = (m) => `${m.title} ${fmtN(m.a)} → ${fmtN(m.b)} ${m.unit}(×${(m.b / m.a).toFixed(1)})`;
+const xOf = (m) => `×${(m.b / m.a).toFixed(1)}`;
+
 function mockTrace(c, a) {
   const { now } = c;
   const ai = c.flags.llm ? { state: 'ok', model: 'mock-llm', at: now - 4 * SEC } : { state: 'none' };
@@ -338,29 +415,43 @@ function mockTrace(c, a) {
     return { ...base, state: 'no_owner', note: d.title, rule: d, diag: d, ai: { state: 'none' } };
   }
   const T = a.ts;
-  // A 끝은 mock 폭주가 시작되는 지금-4분 앞으로 자른다(타임머신의 A·B 비교가 추적과 같은 모양을 보이게)
-  const A = { from: T - 5 * MIN, to: Math.min(T - 90 * SEC, now - 4 * MIN), samples: 861 }, B = { from: T - 30 * SEC, to: Math.min(now, T + 30 * SEC), samples: 2412 };
-  const fns = [
+  // A 끝은 mock 폭주가 시작되는 때(full은 지금-4분, 체험판은 base-4분) 앞으로 자른다(타임머신의 A·B 비교가 추적과 같은 모양을 보이게)
+  const A = { from: T - 5 * MIN, to: Math.min(T - 90 * SEC, surgeStart(c.sig)), samples: 861 }, B = { from: T - 30 * SEC, to: Math.min(now, T + 30 * SEC), samples: 2412 };
+  let fns = [
     { leaf: 'book_insert', pct_a: 2.4, pct_b: 61.8, diff: 59.4 }, { leaf: 'check_risk', pct_a: 71.2, pct_b: 18.1, diff: -53.1 },
     { leaf: 'rebuild_book', pct_a: 0, pct_b: 9.5, diff: 9.5 }, { leaf: 'price_cross', pct_a: 14.3, pct_b: 6.2, diff: -8.1 }, { leaf: 'expire_orders', pct_a: 8.9, pct_b: 3.1, diff: -5.8 },
   ];
-  const path = ['matching_svc', 'main', 'handle_order', 'book_insert'];
-  const metrics = [
+  let top = fns[0];
+  let path = ['matching_svc', 'main', 'handle_order', 'book_insert'];
+  let pathPct = 48.2;
+  let metrics = [
     { name: 'biz.order.in_tps', title: '주문 유입량', unit: 'TPS', signal: 'traffic', a: 1500, b: 6000, peak: 6006 },
     { name: 'svc.cpu.pct', title: '서비스 CPU 사용률', unit: '%', signal: 'saturation', a: 21, b: 100, peak: 108 },
     { name: 'biz.order.latency_p99_ms', title: 'p99 응답 시간', unit: 'ms', signal: 'latency', a: 18, b: 142, peak: 210 },
   ];
+  if (DEMO) { // 체험판: 고정 글자 대신 계산한 값(타임머신 비교표와 같은 숫자)
+    const v = liteCompare(c, A, B);
+    A.samples = v.samplesA;
+    B.samples = v.samplesB;
+    ({ fns, top, path, metrics } = v);
+    pathPct = v.path_pct;
+  }
+  const self = `${top.pct_a}% → ${top.pct_b}%`, inflow = inflowText(metrics[0]);
   const ev = [...base.evidence,
     { id: 'owner', kind: 'owner', label: '체결 · match-01', title: '대상 프로세스: 체결 · match-01', lines: ['식별 경로: 업무 패널 \'체결\'의 서비스', '프로세스 키: svc:matching@match-01'], host: 'match-01', service: 'matching' },
-    { id: 'window', kind: 'window', label: '구간', title: 'A(기준 구간) · B(이상 구간)', lines: [`A 프로파일 샘플 861개 · B 프로파일 샘플 2,412개`] },
+    { id: 'window', kind: 'window', label: '구간', title: 'A(기준 구간) · B(이상 구간)', lines: [`A 프로파일 샘플 ${fmtN(A.samples)}개 · B 프로파일 샘플 ${fmtN(B.samples)}개`] },
     ...fns.map((f) => ({ id: 'fn:' + f.leaf, kind: 'fn', label: f.leaf, title: '함수 ' + f.leaf, lines: [`Self CPU 점유율 A ${f.pct_a}% → B ${f.pct_b}%`] })),
     { id: 'path', kind: 'path', label: '콜스택', title: '콜스택(B 구간 최빈 스택)', lines: [path.join(' › ')] },
     ...metrics.map((m) => ({ id: 'metric:' + m.name, kind: 'metric', label: m.title, title: m.title, lines: [`평균 A ${fmtN(m.a)} → B ${fmtN(m.b)} ${m.unit}`] })),
   ];
-  const rule = { title: '원인 후보 book_insert — 주문 유입량 ×4.0', detail: 'Self CPU 점유율 2.4% → 61.8%(+59.4%p) · 동시간대 주문 유입량 1,500 → 6,000 TPS(×4.0), 서비스 CPU 사용률 21 → 100%(×4.8)', confidence: 'high', evidence_ids: ['alert', 'owner', 'window', 'fn:book_insert', 'path', 'metric:biz.order.in_tps'], next_checks: ['타임머신 B 구간 플레임 그래프에서 book_insert 콜스택 확인', '주문 유입량 급증 출처 확인(정상 거래 / 재시도·비정상 호출)', 'book_insert의 입력 크기 비례 연산(반복·탐색)·락 경합 확인'], by: 'rule' };
-  const llm = { title: 'book_insert CPU 포화 — 주문 유입 ×4.0', detail: '점유율 이동이 유입 배수보다 큼 — 건당 삽입 비용 증가, 원인은 근거에 없음', confidence: 'medium', evidence_ids: ['fn:book_insert', 'metric:biz.order.in_tps', 'metric:svc.cpu.pct'], next_checks: ['book_insert 호가 단계 수·삽입 위치 분포 확인', 'rebuild_book B 구간 호출 조건·빈도 확인', '유입 급증 종목·주문 유형 편중 확인'], by: 'llm', model: 'mock-llm', at: now - 4 * SEC };
+  const cpu = metrics.find((m) => m.name === 'svc.cpu.pct');
+  const rule = { title: `원인 후보 ${top.leaf} — 주문 유입량 ${xOf(metrics[0])}`, detail: `Self CPU 점유율 ${self}(${ppOf(top.diff)}) · 동시간대 ${inflow}${cpu ? `, ${cpu.title} ${fmtN(cpu.a)} → ${fmtN(cpu.b)}${cpu.unit}(${xOf(cpu)})` : ''}`, confidence: 'high', evidence_ids: ['alert', 'owner', 'window', 'fn:book_insert', 'path', 'metric:biz.order.in_tps'], next_checks: ['타임머신 B 구간 플레임 그래프에서 book_insert 콜스택 확인', '주문 유입량 급증 출처 확인(정상 거래 / 재시도·비정상 호출)', 'book_insert의 입력 크기 비례 연산(반복·탐색)·락 경합 확인'], by: 'rule' };
+  // 체험판 · 시연판의 AI 문장은 계산한 숫자만 옮긴다(숫자가 달라 full의 풀이 문장이 맞지 않을 수 있다)
+  const llm = DEMO
+    ? { title: `${top.leaf} CPU 점유율 급증 — 주문 유입 ${xOf(metrics[0])}`, detail: `Self CPU 점유율 ${self} · 동시간대 ${inflow}, 콜스택 ${path.slice(-2).join(' › ')}`, confidence: 'high', evidence_ids: ['fn:book_insert', 'path', 'metric:biz.order.in_tps'], next_checks: ['B 구간 플레임 그래프에서 book_insert 콜스택 확인', '주문 유입 급증 출처 확인(정상 거래 여부)'], by: 'llm', model: 'mock-llm', at: now - 4 * SEC }
+    : { title: 'book_insert CPU 포화 — 주문 유입 ×4.0', detail: '점유율 이동이 유입 배수보다 큼 — 건당 삽입 비용 증가, 원인은 근거에 없음', confidence: 'medium', evidence_ids: ['fn:book_insert', 'metric:biz.order.in_tps', 'metric:svc.cpu.pct'], next_checks: ['book_insert 호가 단계 수·삽입 위치 분포 확인', 'rebuild_book B 구간 호출 조건·빈도 확인', '유입 급증 종목·주문 유형 편중 확인'], by: 'llm', model: 'mock-llm', at: now - 4 * SEC };
   return { ...base, state: 'ok', owner: 'svc:matching@match-01', service: 'matching', service_title: '체결', host: 'match-01', found: '업무 패널 \'체결\'의 서비스',
-    a: A, b: B, compared: true, functions: fns, top: fns[0], path, path_pct: 48.2, metrics, evidence: ev, rule, llm: c.flags.llm ? llm : undefined, diag: c.flags.llm ? llm : rule };
+    a: A, b: B, compared: true, functions: fns, top, path, path_pct: pathPct, metrics, evidence: ev, rule, llm: c.flags.llm ? llm : undefined, diag: c.flags.llm ? llm : rule };
 }
 
 function trace(c, m) {
@@ -377,14 +468,15 @@ function brief(c) {
   const alertEv = (a) => { const id = `alert:${a.id}`; ev.push({ id, kind: 'alert', label: a.kind === 'host' ? a.host : (a.message.split(' · ')[1] || a.message).replace(/\s[\d,.]+.*$/, ''), title: a.message, alert_id: a.id, alert: a, host: a.host }); return id; };
   const biz = firing.filter((a) => a.group === '매매체결' && a.kind !== 'host' && a.kind !== 'exit');
   const hosts = firing.filter((a) => a.kind === 'host');
-  let tb = null;
+  let tb = null, times = '';
   if (biz.length) {
     const ids = biz.map(alertEv);
     lines.push({ text: `체결: ${biz.slice(0, 2).map((a) => a.message.split(' · ').slice(1).join(' · ')).join(', ')}${biz.length > 2 ? ` 외 ${biz.length - 2}건` : ''}`, level: 'crit', refs: ids });
     const t = mockTrace(c, biz.find((a) => a.kind === 'tile') || biz[0]);
-    tb = { alert_id: t.alert_id, message: t.alert.message, level: t.alert.level, state: t.state, final: true, service: t.service, service_title: t.service_title, host: t.host, a: t.a, b: t.b, compared: t.compared, top: t.top, path: t.path, metric: '주문 유입량 1,500 → 6,000 TPS(×4.0)', diag: t.diag, ai: t.ai };
+    tb = { alert_id: t.alert_id, message: t.alert.message, level: t.alert.level, state: t.state, final: true, service: t.service, service_title: t.service_title, host: t.host, a: t.a, b: t.b, compared: t.compared, top: t.top, path: t.path, metric: inflowText(t.metrics[0]), diag: t.diag, ai: t.ai };
+    times = xOf(t.metrics[0]);
     ev.push({ id: 'trace', kind: 'trace', label: '원인 추적', title: '원인 추적: ' + t.alert.message, lines: [t.diag.title], alert_id: t.alert_id, host: t.host, service: t.service });
-    lines.push({ text: '원인 후보 book_insert — 주문 유입량 ×4.0', level: 'crit', refs: ['trace'] });
+    lines.push({ text: t.rule.title, level: 'crit', refs: ['trace'] });
   }
   if (hosts.length) {
     const ids = hosts.map(alertEv);
@@ -398,10 +490,10 @@ function brief(c) {
     ai: { state: 'none' } };
   if (!c.flags.llm) return ok(rule);
   return ok({ ...rule, by: 'llm', model: 'mock-llm', written_at: now - 4 * SEC, ai: { state: 'ok', model: 'mock-llm', at: now - 4 * SEC }, rule: { ...rule, rule: undefined },
-    headline: biz.length ? '체결 응답 지연(위험) — 원인 후보 book_insert' : rule.headline,
+    headline: biz.length ? `체결 응답 지연(위험) — 원인 후보 ${tb.top.leaf}` : rule.headline,
     lines: biz.length ? [
       { text: '체결 p99 응답 시간·대기 큐 위험 · match-01', level: 'crit', refs: ev.filter((e) => e.kind === 'alert' && e.alert.group === '매매체결').map((e) => e.id) },
-      { text: 'book_insert CPU 포화 · 유발 요인 주문 유입 ×4.0', level: 'crit', refs: ['trace'] },
+      { text: `${tb.top.leaf} CPU 포화 · 유발 요인 주문 유입 ${times}`, level: 'crit', refs: ['trace'] },
       ...lines.filter((l) => l.text.startsWith('서버')),
     ] : rule.lines });
 }

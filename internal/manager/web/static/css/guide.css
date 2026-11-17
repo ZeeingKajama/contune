@@ -1,0 +1,136 @@
+/* 체험 가이드(체험판 전용): 카드 · 강조 테두리 · 위 막대 칩. guide/guide.js가 <link>로 붙인다(index.html에는 없다).
+   색은 style.css 변수만 쓴다(밝음 · 어두움을 그대로 따라간다). 보라(--ai*)는 AI 기능 표시라 쓰지 않는다.
+   겹침 순서: 확인 창 50 < 테두리 54 < 카드 55 < 토스트 60 < 로그인 100 */
+
+/* ---- 위 막대 칩 ---- */
+.eg-chip { display:inline-flex; align-items:center; gap:6px; margin-left:-8px; font-size:12px; white-space:nowrap; }
+.eg-chip[hidden] { display:none; }
+.eg-chipb { padding:0 9px; border-radius:10px; border-color:var(--accent); color:var(--accent); background:none; font-size:12px; font-weight:600; line-height:18px; }
+.eg-chipb:hover { background:color-mix(in srgb, var(--accent) 12%, transparent); }
+.eg-chip .tipbox { padding:8px 10px; max-width:280px; white-space:normal; line-height:1.5; }
+.eg-tipl { display:block; }
+.eg-tipl + .eg-tipl { margin-top:4px; }
+
+/* ---- 카드: 제품 패널과 같은 바탕 · 모서리 · 그림자, 위 선만 강조색 ---- */
+.eg { position:fixed; right:16px; bottom:16px; z-index:55; width:360px; max-width:calc(100vw - 32px); max-height:calc(100vh - 76px);
+  display:flex; flex-direction:column; background:var(--surface); color:var(--t1); font-size:13px; line-height:1.55;
+  border:1px solid var(--line); border-top:3px solid var(--accent); border-radius:8px; box-shadow:0 8px 28px rgba(0,0,0,.2); }
+.eg.eg-left { right:auto; left:16px; }
+.eg.eg-top { bottom:auto; } /* 윗변(top)은 guide.js가 위 막대 아래로 맞춘다 */
+.eg[hidden], .eg-pill[hidden], .eg-prog[hidden], .eg-f[hidden] { display:none; }
+.eg:focus { outline:none; }
+.eg-h { display:flex; align-items:center; gap:8px; padding:7px 6px 5px 14px; flex:none; }
+.eg-k { flex:1; min-width:0; color:var(--t3); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.eg-k b { color:var(--accent); font-weight:600; }
+.eg-x { border:0; background:none; color:var(--t3); padding:0 8px; line-height:22px; }
+.eg-x:hover { color:var(--t1); }
+.eg-prog { height:2px; margin:0 14px; background:var(--line); border-radius:1px; overflow:hidden; flex:none; }
+.eg-prog i { display:block; height:100%; width:0; background:var(--accent); transition:width .2s; }
+.eg-b { padding:10px 14px 6px; overflow:auto; overscroll-behavior:contain; min-height:0; }
+.eg-t { margin:0 0 4px; font-size:15px; font-weight:600; line-height:1.4; }
+.eg-p { margin:0 0 8px; color:var(--t2); white-space:pre-line; }
+.eg-okm { color:var(--ok); margin-right:6px; }
+.eg-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+
+/* 처음: 정직 공시(작은 글) · 투어 목록 · 더 둘러보기 */
+.eg-notes { list-style:none; margin:0; padding:6px 10px; background:var(--bg); border-radius:6px; color:var(--t3); font-size:12px; line-height:1.5; }
+.eg-notes li { position:relative; padding-left:9px; }
+.eg-notes li::before { content:'·'; position:absolute; left:0; }
+.eg-tours { list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.eg-tour { display:grid; grid-template-columns:22px minmax(0, 1fr); column-gap:9px; align-items:start; width:100%; padding:7px 10px; border-radius:6px; text-align:left; }
+.eg-tour:hover { background:var(--bg); }
+.eg-tour.feat { border-color:var(--accent); }
+.eg-no { grid-row:1 / span 2; width:22px; height:22px; margin-top:1px; border:1px solid var(--line); border-radius:50%; color:var(--t3); font-size:12px; display:flex; align-items:center; justify-content:center; font-variant-numeric:tabular-nums; }
+.eg-tour.ok .eg-no { border-color:var(--ok); color:var(--ok); font-weight:700; }
+.eg-tt { display:flex; align-items:baseline; gap:6px; min-width:0; }
+.eg-tt b { font-weight:600; min-width:0; }
+.eg-tag { flex:none; padding:0 6px; border:1px solid currentColor; border-radius:9px; color:var(--accent); font-size:11px; line-height:16px; }
+.eg-meta { flex:none; margin-left:auto; color:var(--t3); font-size:12px; white-space:nowrap; }
+.eg-sum { grid-column:2; color:var(--t3); font-size:12px; line-height:1.45; }
+.eg-more { display:flex; flex-wrap:wrap; align-items:center; gap:5px 6px; margin:12px 0 6px; padding-top:9px; border-top:1px solid var(--line); font-size:12px; }
+.eg-moreh { width:100%; color:var(--t3); }
+.eg-more a { padding:0 8px; border:1px solid var(--line); border-radius:10px; color:var(--t2); text-decoration:none; line-height:20px; white-space:nowrap; }
+.eg-more a:hover { color:var(--accent); border-color:var(--accent); }
+
+/* 단계: 낱말 풀이 · 안내 줄 · 길 잃음 */
+.eg-terms { margin:0 0 8px; padding:1px 0 1px 9px; border-left:2px solid var(--line); color:var(--t3); font-size:12px; line-height:1.5; }
+.eg-terms div { display:flex; gap:6px; }
+.eg-terms dt { flex:none; color:var(--t2); font-weight:600; }
+.eg-terms dd { margin:0; }
+.eg-hint { display:flex; align-items:center; gap:8px; margin:0 0 6px; color:var(--accent); font-weight:600; }
+.eg-hint.wait { color:var(--t2); font-weight:400; }
+.eg-dot { flex:none; width:8px; height:8px; border-radius:50%; background:var(--accent); animation:eg-dot 1.4s ease-in-out infinite; }
+.eg-spin { flex:none; width:12px; height:12px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:eg-spin .9s linear infinite; }
+.eg-lost { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; margin:0 0 6px; padding:6px 8px; border:1px dashed var(--line); border-radius:6px; color:var(--t2); font-size:12px; }
+.eg-links { display:flex; flex-direction:column; align-items:flex-start; gap:2px; margin:0 0 6px; }
+.eg-links a { color:var(--accent); text-decoration:none; }
+.eg-links a:hover { text-decoration:underline; }
+
+/* 단추 */
+.eg-f { display:flex; align-items:center; gap:6px; padding:6px 14px 12px; flex:none; }
+.eg-grow { flex:1; }
+.eg-btn { padding:3px 12px; }
+.eg-btn.pri { background:var(--accent); border-color:var(--accent); color:var(--on-accent); font-weight:600; max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.eg-btn.quiet { border-color:transparent; background:none; color:var(--t3); padding:3px 6px; }
+.eg-btn.quiet:hover { color:var(--t1); border-color:transparent; }
+.eg button:focus-visible, .eg a:focus-visible, .eg-pill:focus-visible, .eg-chipb:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* 접었을 때의 알약 */
+.eg-pill { position:fixed; right:16px; bottom:16px; z-index:55; padding:5px 14px; border-color:var(--accent); border-radius:16px; background:var(--surface); color:var(--accent); font-size:13px; font-weight:600; box-shadow:0 4px 12px rgba(0,0,0,.12); }
+
+/* ---- 강조 테두리: 클릭을 막지 않는다(어두운 배경 없음) ---- */
+.eg-ring { position:fixed; z-index:54; pointer-events:none; border:2px solid var(--accent); border-radius:8px; animation:eg-pulse 1.6s ease-in-out infinite; }
+.eg-ring[hidden] { display:none; }
+@keyframes eg-pulse {
+  0%, 100% { box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 32%, transparent); }
+  50% { box-shadow:0 0 0 7px color-mix(in srgb, var(--accent) 8%, transparent); }
+}
+@keyframes eg-dot { 0%, 100% { opacity:1; } 50% { opacity:.35; } }
+@keyframes eg-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .eg-ring { animation:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+  .eg-dot, .eg-spin { animation:none; }
+  .eg-prog i { transition:none; }
+}
+
+/* 로그인 화면이 뜨면 숨는다 */
+body.logged-out .eg, body.logged-out .eg-pill, body.logged-out .eg-ring { display:none; }
+
+/* ---- 체험판에서 화면 쪽 손질(body.demo) ---- */
+/* 토스트는 카드 위로(카드가 왼쪽에 가 있는 넓은 화면, 카드가 위에 가 있을 때는 제자리) */
+body.demo #toasts { bottom:calc(var(--eg-h, 0px) + 8px); }
+@media (min-width:901px) { body.demo.eg-at-left #toasts { bottom:16px; } }
+body.demo.eg-at-top #toasts { bottom:16px; }
+/* 로그아웃(누르면 로그인 화면에서 길을 잃는다)과 백엔드가 있어야 되는 내려받기를 숨긴다:
+   타임머신 · 서비스(.tm-dls), 감사 기록 CSV, 종료 보고서 ⤓ 근거 묶음, 업무 로그 CSV, 위험도 학습 데이터 내려받기 */
+body.demo #user button.ghost,
+body.demo .tm-dls, body.demo a.tm-dl,
+body.demo a.au-csv,
+body.demo .ex-title > button,
+body.demo .bz-lh > button.ghost,
+body.demo .icsv .irow > button:nth-of-type(2) { display:none; }
+
+/* ---- 좁은 화면 ---- */
+/* 위 막대가 넘쳐 문서가 가로로 밀리지 않게: 900px 이하면 시계 · 사용자 이름을 숨기고 사이를 줄인다.
+   700px 이하면 메뉴를 둘째 줄로 내린다(그래도 넘치면 메뉴만 가로로 민다). */
+@media (max-width:900px) {
+  body.demo #top { gap:12px; padding:0 12px; }
+  body.demo #menu a { padding:0 10px; }
+  body.demo #clock, body.demo #user .who { display:none; }
+  body.demo .eg-chip { margin-left:-4px; }
+}
+@media (max-width:700px) {
+  body.demo #top { flex-wrap:wrap; height:auto; gap:0 12px; }
+  body.demo #top > .logo { line-height:40px; }
+  body.demo #menu { order:9; flex:0 0 calc(100% + 24px); height:34px; margin:0 -12px; padding:0 4px; border-top:1px solid var(--line); overflow-x:auto; scrollbar-width:none; }
+  body.demo #menu::-webkit-scrollbar { display:none; }
+  body.demo #menu a { flex:none; padding:0 12px; white-space:nowrap; }
+}
+/* 카드는 아래 전체 폭. 화면 · 서랍 · 확인 창이 카드에 가리지 않게 그만큼 비운다. */
+@media (max-width:600px) {
+  .eg, .eg.eg-left { left:0; right:0; bottom:0; width:auto; max-width:none; max-height:46vh; border-left:0; border-right:0; border-bottom:0; border-radius:12px 12px 0 0; }
+  .eg.eg-home { max-height:70vh; }
+  .eg-pill { right:12px; bottom:12px; }
+  body.demo #page, body.demo .drawer { padding-bottom:calc(16px + var(--eg-h, 0px)); scroll-padding-bottom:var(--eg-h, 0px); }
+  body.demo .modal-bg { padding-bottom:var(--eg-h, 0px); }
+}

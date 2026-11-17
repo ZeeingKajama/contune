@@ -1,6 +1,7 @@
 // 시각 기반 신호: 서버 자원, 실행 자원, 업무 지표, 위험 지수. 같은 (대상, 시각)이면 항상 같은 값.
 import { CATALOG } from './catalog.js';
 import { noise, clamp, round, kf, rnd, SEC } from './util.js';
+import { LITE, DEMO } from './profile.js';
 
 export const HOST_NAMES = CATALOG.groups.flatMap((g) => g.metrics.map((m) => m.name)).filter((n) => n.startsWith('host.'));
 export const JOB_NAMES = CATALOG.groups.flatMap((g) => g.metrics.map((m) => m.name)).filter((n) => n.startsWith('job.'));
@@ -51,7 +52,13 @@ const T_HIST = [[250, 12], [180, 16], [150, 30], [120, 48], [90, 62], [60, 72], 
 const T_JOBCPU = [[250, 30], [180, 36], [150, 50], [120, 70], [90, 88], [60, 97], [30, 100], [0, 100]];
 const T_RISK = [[250, 12], [200, 14], [150, 30], [100, 48], [50, 64], [0, 72]];
 
-const sb = (ts, ctx) => (ctx.surge ? Math.max(0, (ctx.now - ts) / 1000) : 1e6);
+// 폭주 기준 시각. full은 지금(언제 봐도 4분 전에 시작해 지금 최고조). 체험판(lite)은 세계를 만든 때(ctx.base)에 고정한다:
+// base − 4분에 시작해 base에 최고조, 그 뒤 계속 최고조. 화면에 오래 머물러도 시작 시각이 밀리지 않아
+// 알림 시각 · 진행 중 장애 기록 · 원인 추적 A·B 구간 · 프로파일 모양 · 폭주 로그가 언제 봐도 같은 결론을 낸다.
+// 폭주에 묶인 시각을 쓰는 곳(alert.js · biz.js · core.js)은 ctx.now 대신 이 값을 기준으로 삼는다.
+export const surgeRef = (ctx) => (DEMO && ctx.base ? ctx.base : ctx.now);
+export const surgeStart = (ctx) => surgeRef(ctx) - 240 * SEC; // 폭주가 시작한 때(기준 − 4분)
+const sb = (ts, ctx) => (ctx.surge ? Math.max(0, (surgeRef(ctx) - ts) / 1000) : 1e6);
 const nz = (key, ts, ctx, amp) => (ctx.exact ? 0 : noise(key, ts) * amp);
 
 // 업무 지표. 폭주가 아니면 평시 값.
@@ -174,6 +181,7 @@ export function serviceAt(ts, ctx) {
 // 수신 버퍼(4,096건)가 넘치고, 순번이 빠질 때마다 스냅샷 복구(recover_gap → rebuild_book)를 되풀이한다.
 export const QUOTE_SURGE = { ago: 14 * 60, len: 180, over: 80 };
 export function quoteSurgeRange(ctx) {
+  if (LITE) return { from: Infinity, over: Infinity, to: Infinity }; // 체험판: 지난 시세 폭주 없음(줄거리는 주문 폭주 하나)
   const from = (ctx.base || ctx.now) - QUOTE_SURGE.ago * SEC;
   return { from, over: from + QUOTE_SURGE.over * SEC, to: from + QUOTE_SURGE.len * SEC };
 }

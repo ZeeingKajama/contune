@@ -1,6 +1,7 @@
 // /catalog /hosts/{id}/procs(procs: 실행 합, processes: 그 서버에 살아 있는 프로세스 — 06, 카드 P-C 계약 3)
 import { CATALOG } from './catalog.js';
-import { serviceAt, batchJobAt } from './signal.js';
+import { serviceAt, quoteServiceAt, batchJobAt } from './signal.js';
+import { DEMO } from './profile.js';
 import { procsOf } from './world.js';
 import { procsList } from './procs.js';
 
@@ -18,7 +19,8 @@ function procs(c, m) {
   const list = [];
   for (const r of c.w.runs) {
     if (r.host !== h.id || !procsOf(r) || !r.started_at) continue;
-    const v = r === c.w.startRun ? serviceAt(c.now, ex) : r.service ? serviceAt(c.now, { ...ex, surge: false }) : batchJobAt(r, c.now, ex);
+    // 체험판: 시세 실행은 시세 서비스 값으로(프로세스 목록의 quote_svc와 같은 숫자가 되게)
+    const v = r === c.w.startRun ? serviceAt(c.now, ex) : DEMO && r === c.w.quoteRun ? quoteServiceAt(c.now, ex) : r.service ? serviceAt(c.now, { ...ex, surge: false }) : batchJobAt(r, c.now, ex);
     list.push({
       exec_id: r.exec_id,
       flow_id: r.flow_id,

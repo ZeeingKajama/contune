@@ -1,5 +1,6 @@
 // api(path, opts) · poll(fn, ms, opts) · 시계 점 상태 · 갱신 끊김 집계. DOM 없이도 import된다.
 import { handle as mockHandle } from './mock/index.js';
+import { LITE, SUMMIT } from './mock/profile.js';
 
 const hasWin = () => typeof location !== 'undefined';
 
@@ -13,6 +14,10 @@ export function isMock() {
   } catch (e) { /* 무시 */ }
   try { return localStorage.mock === '1'; } catch (e) { return false; }
 }
+// 체험판: mock이면서 lite 프로필(mock/profile.js). 이때만 화면 위 가이드(guide/)를 불러온다.
+export function isDemo() { return isMock() && LITE; }
+// 써밋 시연판: mock이면서 summit 프로필. 이때만 발표자용 순서 가이드(guide/stage.js)를 불러온다.
+export function isSummit() { return isMock() && SUMMIT; }
 
 const healthListeners = new Set();
 let healthy = true;

@@ -1,15 +1,25 @@
 // 로그인 mock. /me · /login · /logout 과 역할 검사(서버 역할 표의 축약판).
 // ?role=viewer|operator|admin(기본 admin), ?login=1이면 로그인 전 상태로 시작한다.
+// 시연판(profile.js의 summit): 로그인 id가 viewer · operator · admin이면 그 역할이 된다(역할 바꿔 로그인하는 장면). 그 밖의 id는 위와 같다.
+// 로그인 · 로그인 실패 · 로그아웃은 감사 기록(c.w.audit)에 매니저(webauth/session.go)와 같은 글로 남는다.
+import { SUMMIT } from './profile.js';
+
 const RANK = { viewer: 1, operator: 2, admin: 3 };
 const state = { in: null, id: 'demo' };
 
 function roleOf(c) {
+  if (SUMMIT && RANK[state.id]) return state.id;
   return RANK[c.flags.role] ? c.flags.role : 'admin';
+}
+function note(c, actor, action, target, detail) {
+  if (SUMMIT && c.w && c.w.audit) c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor, action, target, detail });
 }
 function isIn(c) {
   if (state.in === null) state.in = !c.flags.login;
   return state.in;
 }
+// 지금 로그인한 사용자 id(체험판의 감사 기록 · 보드 저장이 '누가'를 위 막대의 사용자와 같게 쓴다)
+export const userId = () => state.id;
 
 // 필요한 역할. 서버 requiredRole의 요약: 읽기는 조회, 내보내기와 실행 조작은 운영, 나머지 변경은 관리.
 export function needOf(method, pathname) {
@@ -46,11 +56,19 @@ export const routes = [
   ['POST', /^\/login$/, (c) => {
     const b = c.json();
     if (!b) return { status: 400, body: { error: 'bad request' } };
-    if (!b.id || b.password === 'wrong') return { status: 401, body: { error: 'invalid credentials' } };
+    if (!b.id || b.password === 'wrong') {
+      note(c, 'web(127.0.0.1)', 'login.fail', String(b.id || '').slice(0, 64), '');
+      return { status: 401, body: { error: 'invalid credentials' } };
+    }
     if (b.password === 'many') return { status: 429, body: { error: 'too many attempts' } };
     state.in = true;
     state.id = String(b.id);
+    note(c, `user:${state.id}`, 'login.ok', state.id, `role=${roleOf(c)} from=127.0.0.1`);
     return { status: 200, body: { id: state.id, role: roleOf(c) } };
   }],
-  ['POST', /^\/logout$/, () => { state.in = false; return { status: 204, body: null }; }],
+  ['POST', /^\/logout$/, (c) => {
+    if (state.in) note(c, `user:${state.id}`, 'logout', state.id, '');
+    state.in = false;
+    return { status: 204, body: null };
+  }],
 ];

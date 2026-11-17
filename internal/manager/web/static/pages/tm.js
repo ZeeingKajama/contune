@@ -83,10 +83,11 @@ export function mergeProfiles(ps) {
   }
   return { samples, stacks: [...by].map(([frames, n]) => ({ frames, samples: n })).sort((a, b) => b.samples - a.samples) };
 }
-// 고정 구간: A = 앞 30초, B = 마지막 30초
-export function fixedAB(view) {
-  const span = Math.min(FIXED, Math.floor((view.to - view.from) / 2));
-  return { a: { from: view.from, to: view.from + span }, b: { from: view.to - span, to: view.to } };
+// 고정 구간: A = 앞 30초, B = 마지막 30초. 보는 구간 끝이 앞날이면(원인 추적이 연 구간은 B 끝 + 60초) 지금까지만 친다: 앞날에는 샘플이 없다
+export function fixedAB(view, now = Date.now()) {
+  const to = Math.max(view.from, Math.min(view.to, now));
+  const span = Math.min(FIXED, Math.floor((to - view.from) / 2));
+  return { a: { from: view.from, to: view.from + span }, b: { from: to - span, to } };
 }
 // leaf 비중 변화 상위 n개(절댓값 큰 순). 막대 폭은 최대 변화를 100으로 한 비율
 export function topChanges(cmp, n = 5) {
@@ -149,6 +150,7 @@ const TABS = ['out', 'app', 'ev'];
 export async function render(host, params, query = {}) {
   const id = params.id;
   host.classList.add('tm');
+  timers.push(() => host.classList.remove('tm')); // 떠날 때 지운다(#page는 모든 화면이 같이 쓴다)
   let detail;
   try { detail = await api('/runs/' + enc(id)); } catch (e) {
     setTitle('실행');
@@ -466,6 +468,7 @@ export async function render(host, params, query = {}) {
 
   drawHead(); drawProcs(); drawKpis(); drawTools(); drawMoved(); drawTabs();
   buildCharts(await fetchAll());
+  recolor = async () => { const d = await fetchAll(); if (tracks.isConnected) buildCharts(d); };
   await drawFlames();
   loadAppLogs();
 
@@ -486,7 +489,13 @@ export async function render(host, params, query = {}) {
   timers.push(stop);
 }
 
+// 테마가 바뀌면(app.js) 차트만 새로 만든다. 차트는 만들 때 색을 읽는다. 고른 A·B 구간과 탭은 그대로 둔다.
+// → 맡았으면 true(false면 app.js가 화면을 다시 그린다)
+let recolor = null;
+export function retheme() { if (!recolor) return false; recolor(); return true; }
+
 export function dispose() {
+  recolor = null;
   for (const s of timers) s();
   timers = [];
   for (const c of charts) { try { c.destroy(); } catch (e) { /* 무시 */ } }

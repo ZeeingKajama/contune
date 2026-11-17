@@ -314,6 +314,9 @@ export function dispose() {
   alive = false;
   for (const f of cleanups.splice(0)) { try { f(); } catch (e) { /* 무시 */ } }
 }
+// 테마가 바뀌면(app.js) 미리보기의 위젯 몸통만 새로 그린다. 저장 안 한 편집은 그대로다. → 맡았으면 true
+let recolor = null;
+export function retheme() { if (!recolor) return false; recolor(); return true; }
 
 const idOfFile = (f) => String(f || '').replace(/^.*\//, '').replace(/\.ya?ml$/, '');
 const viewHref = (id) => `#dash/${encodeURIComponent(id)}`;
@@ -501,6 +504,8 @@ function mount(page, st, refs, ctx) {
     },
   });
   cleanups.push(() => board.dispose());
+  recolor = () => board.recolor();
+  cleanups.push(() => { recolor = null; });
   stage.addEventListener('click', (e) => {
     if (ui.sel && !e.target.closest('section.dw')) select(null);
   });

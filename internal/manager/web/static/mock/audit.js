@@ -1,5 +1,16 @@
 // 감사 기록 mock. GET /audit · GET /flows/{id}/history (계약: docs/cards/S-audit.md)
-import { MIN, hash32, rnd } from './util.js';
+// 체험판(profile.js의 lite): 씨앗은 작은 세계에 맞는 열 몇 건(시각은 세계를 만든 때 base 기준, 있는 플로우 · 서버 · 실행만)이고,
+// 이 세션에서 한 조작(c.w.audit: 재실행 · 강제 종료 · 강제 OK · 지금 실행 · 알림 확인 · 보드 · 플로우 · 로그 수집 저장 …)을 그 위에 보탠다.
+// 플로우 '변경 이력' 탭도 같은 목록에서 그 플로우의 저장 · 삭제만 골라 준다(방금 한 저장이 탭에도 보인다).
+// 시연판(summit): 같은 방식에 씨앗 종류를 더한다(summitSeed). 조작의 '누가'는 조작한 때 로그인해 있던 사용자다(index.js가 적어 둔 by).
+import { MIN, DAY, hash32, rnd, sha, fmtN, fmtKst } from './util.js';
+import { DEMO, SUMMIT } from './profile.js';
+import { holdsOf, FEATURE_TITLE } from './riskhold.js';
+import { trainDetail, seedModel } from './alert.js';
+import { userId } from './auth.js';
+import { seedHistory as collectSeed } from './collect.js';
+import { defSha } from './editor.js';
+import { seedBoards } from './dash.js';
 
 const ok = (body, status = 200) => ({ status, body });
 const err = (status, msg) => ({ status, body: { error: msg } });
@@ -67,6 +78,116 @@ function build(now) {
   })).reverse();
 }
 
+// ---- 체험판 ----
+const DAY_MIN = 24 * 60;
+const WEB = 'user:web(127.0.0.1)'; // mock 조작이 쓰는 actor(ops.js 등). 화면에는 로그인한 사용자로 보인다
+const h8 = (k) => hash32(k).toString(16).padStart(8, '0');
+
+// 씨앗(id 없이, 순서 없이). 줄거리: 어제 관리자가 플로우 둘을 손봄 → 밤사이 로그인 실패 몰림 → 개장 전 운영자가 fetch-ref 검증 스텝을
+// 강제 종료하고 강제 OK → 체결 서비스가 죽은 뒤 관리자가 매매체결 로그 수집을 고침 → 운영자가 업무 흐름 보드를 저장.
+function liteSeed(c) {
+  const w = c.w, base = w.base;
+  const out = [];
+  const add = (ago, actor, action, target, detail) => out.push({ ts: Math.round(base - ago * MIN), actor, action, target, detail });
+  add(1310, U, 'login.ok', 'admin', 'role=admin from=10.0.1.20');
+  // 플로우 저장: 플로우마다 2~3건. 내용의 sha는 이어지고 맨 끝은 지금 정의의 sha(이 세션에서 먼저 고쳤으면 그 저장이 떠난 sha).
+  // 최근 24시간 안에는 둘(daily-settle · ext-send-margin), 나머지는 그보다 전이라 구간을 넓혀야 보인다
+  const recent = { 'daily-settle': 1296, 'ext-send-margin': 1288 };
+  for (const f of w.flows) {
+    const first = (w.audit || []).find((e) => e.action.startsWith('flow.') && e.target === f.id);
+    const m = first ? / (\S+) → \S+$/.exec(first.detail || '') : null;
+    if (m && m[1] === '-') continue; // 이 세션에서 새로 만든 플로우
+    const file = f.file || `flows/${f.board}/${f.id}.yaml`;
+    const n = 2 + (hash32(f.id) % 2);
+    let ago = recent[f.id] || DAY_MIN + 120 + Math.round(rnd(f.id + 't') * 1500);
+    for (let k = 0; k < n; k++) {
+      const to = k === 0 ? (m ? m[1] : defSha(f).slice(0, 8)) : h8(f.id + k);
+      add(ago, U, 'flow.save', f.id, `${file} ${k === n - 1 ? '-' : h8(f.id + (k + 1))} → ${to}`);
+      ago = Math.max(ago, DAY_MIN) + 240 + Math.round(rnd(f.id + 't' + k) * 2400);
+    }
+  }
+  // 로그인 실패 몰림: 같은 곳에서 2분 사이 4회
+  for (const [ago, id] of [[742, 'admin'], [741.5, 'admin'], [741, 'administrator'], [740, 'root']]) add(ago, 'web(10.0.3.7)', 'login.fail', id, '');
+  // 강제 종료 · 강제 OK 한 쌍: 개장 전 fetch-ref › verify-ref의 최근 실행(세계에 있는 실행 ID라 대상 링크가 열린다).
+  // 그 실행에 강제 종료 · 강제 OK 이벤트가 있으면 그 시각 · 사유를 그대로 쓰고, 없으면 끝난 때와 4분 뒤로 둔다
+  const vr = w.runs.filter((r) => r.flow_id === 'fetch-ref' && r.step_id === 'verify-ref' && r.ended_at).sort((a, b) => b.started_at - a.started_at)[0];
+  if (vr) {
+    const evs = vr.events || [];
+    const kill = evs.find((e) => e.to === 'KILLED'), fok = evs.find((e) => /^force-ok/.test(e.reason || ''));
+    const killed = kill ? kill.ts : vr.ended_at;
+    const why = (fok && fok.reason.replace(/^force-ok:?\s*/, '')) || '기준 정보는 원본과 수작업으로 대조함';
+    out.push({ ts: vr.started_at - 4 * MIN, actor: O, action: 'login.ok', target: 'operator', detail: 'role=operator from=10.0.1.31' });
+    out.push({ ts: killed, actor: O, action: 'run.kill', target: vr.exec_id, detail: 'fetch-ref/verify-ref' });
+    out.push({ ts: fok ? fok.ts : killed + 4 * MIN, actor: O, action: 'run.force_ok', target: vr.exec_id, detail: `fetch-ref/verify-ref 사유: ${why}` });
+  }
+  add(SUMMIT ? 201 : 121, U, 'login.ok', 'admin', 'role=admin from=10.0.1.20');
+  // 로그 수집 변경: 로그 수집 화면의 변경 이력과 같은 줄
+  for (const e of collectSeed(base)) out.push({ ts: e.ts, actor: e.actor, action: e.action, target: e.target, detail: e.detail });
+  // 보드 저장: 예시 보드의 '마지막 저장'과 같은 사람 · 때 · rev
+  for (const b of seedBoards(c)) out.push({ ts: b.updated_at, actor: b.updated_by, action: 'dash.save', target: b.id, detail: `바꿈 · 위젯 ${b.widgets}개 · rev ${sha(b.id + '/prev')}→${b.rev}` });
+  if (SUMMIT) summitSeed(c, out, add);
+  return out.filter((e) => e.ts < base);
+}
+
+// ---- 시연판 씨앗 ----
+// 체험판 씨앗에 없는 종류를 더한다. 가리키는 것은 세계에 있는 것뿐이고(지운 플로우만 예외), 글은 매니저가 남기는 꼴이다.
+//   위험 요인 확인 중 · 이상 없음 · 해제 · 자동 해제: 위험도 화면 이력(riskhold.js 씨앗)과 같은 줄
+//   자동 장애 기록 확인 · 장애 기록 수정: 세계의 장애 기록
+//   위험 지수 학습 · 로그 파일 찾기 · 미리보기 · 업무 패널 다시 읽기: 시세 로그에서 숫자를 뽑아 벤더 패널을 붙인 날의 흐름
+//   수동 실행: svr_b가 죽은 뒤 운영자가 BATCH_JOB을 다시 돌린 것(w.batchRuns[1])
+//   플로우 저장 · 삭제: 어제 관리자가 만들었다 지운 임시 플로우 · 감사 기록 내려받기 · 로그인 실패 몰림 다섯째(같은 곳 5분 새 5회)
+const hhmm = (ts) => fmtKst(ts).slice(0, 5);
+const p2 = (n) => String(n).padStart(2, '0');
+const ymdhm = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`; };
+function summitSeed(c, out, add) {
+  const w = c.w, base = w.base;
+  const mine = w.audit || [];
+  for (const h of holdsOf(w)) {
+    if (h.id >= 100) continue; // 이 세션에서 건 표시는 c.w.audit에 있다
+    const t = FEATURE_TITLE[h.feature];
+    out.push({ ts: h.at, actor: h.by, action: `risk.${h.kind}`, target: `risk:${h.feature}`, detail: `${t} ${fmtN(h.value)} · 한도 ${fmtN(h.limit)} · ~${hhmm(h.until)}${h.reason ? ` · 사유: ${h.reason}` : ''}` });
+    if (!h.ended_at) continue;
+    out.push(h.ended_by === 'system'
+      ? { ts: h.ended_at, actor: 'system', action: 'risk.expire', target: `risk:${h.feature}`, detail: `${t} #${h.id} ${h.end_note}` }
+      : { ts: h.ended_at, actor: h.ended_by, action: 'risk.release', target: `risk:${h.feature}`, detail: `${t} #${h.id}` });
+  }
+  for (const i of w.incidents) {
+    if (i.source !== 'auto' || !i.confirmed || !i.end || mine.some((e) => e.action === 'incident.confirm' && e.target === `incident:${i.id}`)) continue;
+    out.push({ ts: i.end + 14 * MIN, actor: O, action: 'incident.confirm', target: `incident:${i.id}`, detail: `${i.title} · 장애로 확인` });
+  }
+  const ext = w.incidents.find((i) => i.source === 'seed' && i.title === '대외 전송 실패');
+  if (ext) out.push({ ts: ext.end + 6 * MIN, actor: O, action: 'incident.update', target: `incident:${ext.id}`, detail: ext.title });
+  add(196, U, 'collect.discover', 'host:feed-01', '후보 7개');
+  add(194, U, 'collect.peek', 'host:feed-01', '/var/lib/eum/logs/quote_feed.log 48줄');
+  add(185, U, 'panels.reload', 'panels', '패널 7개, 읽지 못한 파일 1개');
+  add(170, U, 'risk.train', 'risk', trainDetail('model', seedModel(w)));
+  const bj = w.batchRuns && w.batchRuns[1];
+  if (bj) out.push({ ts: bj.scheduled_at, actor: O, action: 'run.manual', target: bj.flow_id, detail: `flow_run_id=${bj.flow_run_id} 스텝 1개` });
+  const tmp = 'flows/정산/tmp-settle-check.yaml';
+  add(1304, U, 'flow.save', 'tmp-settle-check', `${tmp} - → ${h8('tmp-settle-check')}`);
+  add(1299, U, 'flow.delete', 'tmp-settle-check', `${tmp} ${h8('tmp-settle-check')} → -`);
+  add(739.5, 'web(10.0.3.7)', 'login.fail', '=cmd|calc!A1', '');
+  // 감사 기록 내려받기: 그때까지의 24시간, 건수는 이 씨앗에서 센다
+  const at = Math.round(base - 1270 * MIN);
+  out.push({ ts: at, actor: U, action: 'audit.export', target: 'audit', detail: `${ymdhm(at - DAY)} ~ ${ymdhm(at)} ${out.filter((e) => e.ts >= at - DAY && e.ts < at).length}건` });
+}
+const seeds = new WeakMap(); // 세계마다 한 번(id는 오래된 것부터 1, 2, …)
+function liteList(c) {
+  let seed = seeds.get(c.w);
+  if (!seed) {
+    seed = liteSeed(c).sort((a, b) => a.ts - b.ts).map((e, i) => ({ id: i + 1, ...e }));
+    seeds.set(c.w, seed);
+  }
+  // 이 세션의 조작: 쌓인 순서대로 씨앗 뒤 id. '누가'는 로그인한 사용자, 대상 · 내용은 매니저가 남기는 꼴로 맞춘다
+  const mine = (c.w.audit || []).map((e, i) => {
+    let target = String(e.target ?? ''), detail = String(e.detail ?? '');
+    if (e.action.startsWith('incident.') && /^\d+$/.test(target)) target = 'incident:' + target;
+    if (e.action === 'incident.import') { target = target || 'incidents'; if (/^\d+$/.test(detail)) detail += '건'; }
+    return { id: seed.length + i + 1, ts: e.ts, actor: e.actor === WEB ? `user:${e.by || userId()}` : e.actor, action: e.action, target, detail }; // by: 시연판이 조작 때 적어 둔 사용자(index.js)
+  });
+  return [...seed, ...mine].reverse(); // 최신 먼저(id 내림차순)
+}
+
 const num = (v) => (v === null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
 
 function audit(c) {
@@ -79,7 +200,7 @@ function audit(c) {
   const actor = q.get('actor') || '', text = (q.get('q') || '').toLowerCase();
   const before = num(q.get('before'));
   const limit = Math.min(1000, num(q.get('limit')) || 200);
-  const inRange = build(c.now).filter((e) => e.ts >= from && e.ts <= to);
+  const inRange = (DEMO ? liteList(c) : build(c.now)).filter((e) => e.ts >= from && e.ts <= to);
   const stats = { actions: {}, actors: {} };
   for (const e of inRange) {
     stats.actions[e.action] = (stats.actions[e.action] || 0) + 1;
@@ -101,6 +222,8 @@ function history(c, m) {
   const f = c.w.flows.find((x) => x.id === id);
   if (!f) return err(404, 'flow not found');
   const limit = Math.min(1000, num(c.q.get('limit')) || 50);
+  // 체험판: 감사 기록과 같은 목록에서(씨앗 + 이 세션의 저장)
+  if (DEMO) return ok({ entries: liteList(c).filter((e) => e.action.startsWith('flow.') && e.target === id).slice(0, limit) });
   const n = 2 + (hash32(id) % 2);
   const sha = (k) => hash32(id + k).toString(16).padStart(8, '0').slice(0, 8);
   const out = [];

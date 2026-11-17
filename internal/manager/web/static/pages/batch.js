@@ -65,7 +65,8 @@ const ACTIVE = new Set(['RUNNING', 'WAITING', 'DISPATCHED', 'GATED', 'HELD']);
 //   {id, flow_id, trigger, started_at, ended_at, status, steps:{step_id:[시도 오름차순]}}
 // 상태: 시도가 남지 않은 실패가 있으면 FAILED, 도는 것이 있으면 RUNNING, 모든 스텝이 성공이면 SUCCEEDED.
 // 지난 실행의 마지막 시도 실패는 끝난 실패로 본다(최근 실행 상태는 /flows의 last가 정답).
-export function groupFlowRuns(runs, stepIds) {
+// 행이 없는 스텝(실행 뒤 정의에 더해진 스텝)은 무시한다 — 매니저 sched.FlowRunStatus와 같은 규칙. 스텝 행은 발화 때 모두 만들어진다.
+export function groupFlowRuns(runs) {
   const map = new Map();
   for (const r of runs || []) {
     if (!r.flow_run_id) continue;
@@ -85,7 +86,7 @@ export function groupFlowRuns(runs, stepIds) {
     const ok = (r) => r.status === 'SUCCEEDED';
     if (latest.some((r) => DEAD.has(r.status) && !r.forced)) fr.status = 'FAILED';
     else if (latest.some((r) => ACTIVE.has(r.status))) fr.status = 'RUNNING';
-    else if (latest.every(ok) && (!stepIds || stepIds.every((s) => fr.steps[s]))) fr.status = 'SUCCEEDED';
+    else if (latest.every(ok)) fr.status = 'SUCCEEDED';
     else fr.status = 'RUNNING';
     const ends = fr.rows.map((r) => r.ended_at).filter(Boolean);
     fr.ended_at = fr.status === 'RUNNING' || !ends.length ? 0 : Math.max(...ends);
@@ -620,10 +621,11 @@ async function renderFlow(host, params, query) {
     const tail = String(run.log_tail || '').split('\n').filter((x) => x !== '').slice(-20).join('\n');
     d.body.replaceChildren(
       el('div', { class: 'dw-state' }, state, el('span', { class: 'bt-sp' }), el('a', { class: 'bt-btn primary', href: '#run/' + id2, text: '타임머신에서 분석 →' })),
-      tries.length > 1 ? el('div', { class: 'dw-tries' }, el('span', { class: 'dim', text: '시도' }),
+      // replaceChildren은 null을 글자 "null"로 붙인다 → 시도가 하나뿐이면 아무것도 넣지 않는다
+      ...(tries.length > 1 ? [el('div', { class: 'dw-tries' }, el('span', { class: 'dim', text: '시도' }),
         tries.map((t) => el('button', { type: 'button', class: 'dw-try s-' + (t.forced && t.status === 'SUCCEEDED' ? 'forced' : t.status.toLowerCase()) + (t.exec_id === run.exec_id ? ' on' : ''),
           title: `${STATE_LABEL[t.status] || t.status} · ${t.started_at ? fmtDuration((t.ended_at || Date.now()) - t.started_at) : DASH}`,
-          onclick: () => goExec(t.exec_id) }, String(t.attempt)))) : null,
+          onclick: () => goExec(t.exec_id) }, String(t.attempt))))] : []),
       el('h4', { class: 'dw-h', text: '실행 정보' }),
       el('dl', { class: 'dw-kv' },
         kv('플로우 실행', fmtDT(fr ? fr.started_at : run.scheduled_at, SEC)),
@@ -669,7 +671,7 @@ async function renderFlow(host, params, query) {
     // 스텝 starts(띄우는 서비스)가 있으면 그 서버 인스턴스 상태. 응답이 없거나 실패하면 null(그래프는 ○)
     S.svcs = f.steps.some((s) => (s.starts || []).length) ? await api('/services').then((r) => r.services || [], () => null) : null;
     S.runs = rr.runs || [];
-    S.frs = groupFlowRuns(S.runs, f.steps.map((s) => s.id));
+    S.frs = groupFlowRuns(S.runs);
     // 최근 플로우 실행 상태는 /flows의 last가 정답
     if (f.last) {
       const lf = S.frs.find((x) => x.id === f.last.flow_run_id);

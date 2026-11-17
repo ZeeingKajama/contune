@@ -13,6 +13,8 @@
 // 서비스 주인 키("svc:<서비스>@<서버>")로 오는 /series·/profile·/logs, 서비스 패널의 /panels, /alerts·/exits는
 // 앞선 mock 모듈의 경로를 감싸서 받는다(ROUTES에서 services가 뒤라 정규식만으로는 먼저 받을 수 없다).
 // 감싼 쪽은 먼저 원래 처리기를 부르고, 원래 처리기가 이미 서비스 값을 주면(다른 레인이 채우면) 그것을 그대로 쓴다.
+// 체험판(lite): 정의 6개만(자동 서비스 · 정의 오류 줄 · match-02 인스턴스 없음). 체결은 base − 150분 실행(w.crashRun)이 띄운 matching_svc가
+// base − 126분에 SIGSEGV로 죽고 base − 95분 실행(w.startRun)이 다시 띄웠다 → 재기동 1 · 종료 1. 죽은 프로세스는 세계(w.procs)의 기록을 쓴다.
 // DOM 없이 import된다.
 import { SEC, MIN, HOUR, DAY, KST, round, noise } from './util.js';
 import { serviceAt, bizAt, quoteAt, quoteServiceAt, stageAt, stageServiceAt } from './signal.js';
@@ -20,6 +22,7 @@ import { routes as coreRoutes } from './core.js';
 import { routes as bizRoutes } from './biz.js';
 import { routes as exitRoutes } from './exit.js';
 import { routes as alertRoutes } from './alert.js';
+import { LITE, DEMO, SUMMIT, pick } from './profile.js';
 
 const ok = (body, status = 200) => ({ status, body });
 const err = (status, msg) => ({ status, body: { error: msg } });
@@ -48,10 +51,10 @@ const FLOW_SVCS = [
   { id: 'dist', host: 'feed-02', port: 9106, at: (w, now) => (w.quoteRun ? w.quoteRun.started_at : now - 3 * HOUR) - 2000 },
   { id: 'index', host: 'idx-01', port: 9105, at: (w, now) => (w.quoteRun ? w.quoteRun.started_at : now - 3 * HOUR) - 1000 },
 ];
-const AUTO = ['svr_a', 'svr_b', 'svr_c'];
+const AUTO = pick(['svr_a', 'svr_b', 'svr_c'], []);
 const PANEL_OF = { channel: 'channel', matching: 'matching', quote: 'quote', index: 'index', dist: 'dist', stats: 'stats' };
 const SVC_OF_COMM = { matching_svc: 'matching', quote_svc: 'quote', channel_svc: 'channel', index_svc: 'index', dist_svc: 'dist', stats_svc: 'stats' };
-const DEF_ERRORS = [{ file: '주문접수.yaml', msg: 'match[0].exe: 절대 경로여야 합니다' }];
+const DEF_ERRORS = pick([{ file: '주문접수.yaml', msg: 'match[0].exe: 절대 경로여야 합니다' }], []);
 // 자동 서비스의 자원(06 §7.1: svr_c 121%)
 const AUTO_LOAD = { svr_a: { cpu: 38, rss: 210 }, svr_b: { cpu: 64, rss: 540 }, svr_c: { cpu: 121, rss: 1204 } };
 
@@ -121,7 +124,16 @@ function story(c) {
     ended_at: 0, exit_id: '', flow_id: '', step_id: '', ...o, owner: ownerOf(o.service, o.host),
   });
   const fromRun = (r) => (r ? { exec_id: r.exec_id, flow_id: r.flow_id, step_id: r.step_id } : {});
-  for (const x of exitRecords(c)) {
+  if (LITE) {
+    // 체험판: 죽은 서비스 프로세스는 세계(w.procs)의 기록에서(시각 · pid가 시간표 · /procs와 같게). 끝난 방식 글은 종료 보고서에서, 없으면 SIGSEGV
+    const recs = exitRecords(c);
+    for (const x of (w.procs || []).filter((p) => !p.leader && p.ended_at && p.exit_id && DEFS.some((d) => d.id === p.service))) {
+      const rec = recs.find((e) => e.id === x.exit_id);
+      P({ host: x.host, pid: x.pid, ppid: x.ppid, started_at: x.started_at, ended_at: x.ended_at, comm: x.comm, exe: x.exe, cmdline: x.cmdline,
+        ...fromRun(w.runs.find((r) => r.exec_id === x.exec_id)), service: x.service, exit_id: x.exit_id, profile: true, threads: x.service === 'matching' ? 4 : 3,
+        _how: (rec && rec.signal_name) || 'SIGSEGV', _level: 'crit' });
+    }
+  } else for (const x of exitRecords(c)) {
     const svc = SVC_OF_COMM[x.comm];
     if (!svc) continue;
     P({ host: x.host, pid: x.pid, started_at: x.started_at, ended_at: x.ended_at, comm: x.comm, exe: x.exe, cmdline: x.cmdline,
@@ -135,7 +147,9 @@ function story(c) {
     P({ host: w.startRun.host, pid: x.pid ?? 52310, ppid: x.ppid ?? 1, started_at: x.started_at ?? w.startRun.started_at + 1200, comm: 'matching_svc', exe: '/opt/eum/demo/bin/matching_svc',
       cmdline: '/opt/eum/demo/bin/matching_svc --port 9100 --accept-rate 1500 --token=***', ...fromRun(w.startRun), service: 'matching', profile: true, threads: 4, _now: true });
   }
-  P({ host: 'match-02', pid: 61204, started_at: now - 2 * DAY + 3 * HOUR, ended_at: now - DAY - 5 * HOUR, comm: 'matching_svc', exe: '/opt/eum/demo/bin/matching_svc',
+  // 시연판: match-02 인스턴스가 뜨고 끝난 때를 세계를 만든 때 기준으로 고정한다(머문 만큼 밀리지 않게)
+  const m2 = SUMMIT ? w.base : now;
+  if (w.hosts.some((h) => h.id === 'match-02')) P({ host: 'match-02', pid: 61204, started_at: m2 - 2 * DAY + 3 * HOUR, ended_at: m2 - DAY - 5 * HOUR, comm: 'matching_svc', exe: '/opt/eum/demo/bin/matching_svc',
     cmdline: '/opt/eum/demo/bin/matching_svc --port 9100 --accept-rate 200', service: 'matching', threads: 4 });
   if (w.quoteRun && w.quoteRun.started_at) {
     const x = inWorld(w.quoteRun, 'quote_svc');
@@ -146,7 +160,8 @@ function story(c) {
     cmdline: `/opt/eum/demo/bin/${f.id}_svc --bus /var/lib/eum/bus --rate rate --push 127.0.0.1:${f.port}`, service: f.id, profile: true, _now: true }));
   // 자동 svr_a·svr_b·svr_c: mock 세계의 BATCH_JOB › start 실행들(w.batchRuns: 정기 · svr_b만 다시 띄운 수동 재실행)이 띄운
   // 프로세스(w.procs)와 같은 pid · 시각 · 종료. 세계에 없으면(예전 세계) daily-settle › settle로 대신한다.
-  const bruns = (w.batchRuns && w.batchRuns.length ? w.batchRuns : [w.batchRun || latestRun(w, 'daily-settle', 'settle')]).filter(Boolean);
+  // 자동 서비스가 없는 세계(체험판: AUTO 빈 표, w.batchRun = null)에서는 건너뛴다
+  const bruns = !AUTO.length ? [] : (w.batchRuns && w.batchRuns.length ? w.batchRuns : [w.batchRun || latestRun(w, 'daily-settle', 'settle')]).filter(Boolean);
   for (const st of bruns) {
     const wp = (w.procs || []).filter((p) => p.exec_id === st.exec_id && AUTO.includes(p.comm));
     const list = wp.length || st !== bruns[0] ? wp : AUTO.map((n, i) => ({ comm: n, pid: 4101 + i, ppid: 4100, started_at: st.started_at + 300 + i * 40,
@@ -200,7 +215,8 @@ function instancesOf(c, def, procs) {
     const live = mine.filter(alive);
     const need = (def.expect && def.expect.count) || 1;
     const up = live.length >= need;
-    const state = up ? 'up' : def.expect && def.expect.active && !inActive(def.expect.active, now) ? 'off' : 'down';
+    // 시연판: 감시 시간을 따지지 않는다(주말 · 밤에 열어도 match-02 미기동 알림이 같은 장면으로 나오게)
+    const state = up ? 'up' : !SUMMIT && def.expect && def.expect.active && !inActive(def.expect.active, now) ? 'off' : 'down';
     const starts = mine.filter((p) => p.started_at >= day).length;
     const before = mine.some((p) => p.started_at < day && (!p.ended_at || p.ended_at > day));
     const exits = mine.filter((p) => p.exit_id && p.ended_at >= day);
@@ -308,7 +324,9 @@ hook(coreRoutes, 'GET', '/profile', (c, m, orig) => {
   const from = num(c.q.get('from')) || to - 20 * SEC;
   const empty = ok({ exec_id: owner, from, to, samples: 0, stacks: [] });
   const procs = story(c).filter((p) => p.owner === owner && p.profile);
-  const lived = procs.reduce((s, p) => s + Math.max(0, Math.min(to, p.ended_at || c.now) - Math.max(from, p.started_at)), 0);
+  // 체험판: 살아 있는 프로세스는 구간 끝까지 산 것으로 본다(추적 링크의 구간이 지금보다 57초 뒤까지라, 연 직후 '자동 선택'의 B가 비지 않게)
+  const aliveTo = DEMO ? Math.max(c.now, to) : c.now;
+  const lived = procs.reduce((s, p) => s + Math.max(0, Math.min(to, p.ended_at || aliveTo) - Math.max(from, p.started_at)), 0);
   const run = backingRun(c, owner);
   if (!lived || !run) return empty;
   const b = orig(withQuery(c, { exec_id: run.exec_id }), m);
@@ -340,7 +358,7 @@ hook(bizRoutes, 'GET', '/logs', (c, m, orig) => {
   if (ex) {
     const run = backingRun(c, ex);
     if (!run) return ok({ events: [] });
-    r = orig(withQuery(c, { exec_id: run.exec_id }), m);
+    r = orig({ ...withQuery(c, { exec_id: run.exec_id }), svcOwner: true }, m);
   } else r = orig(c, m);
   if (r.status !== 200 || !r.body) return r;
   return ok({ ...r.body, events: (r.body.events || []).map((e) => (re.has(e.exec_id) ? { ...e, exec_id: re.get(e.exec_id) } : e)) });

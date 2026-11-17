@@ -1,12 +1,13 @@
 // /hosts /flows /flows/hours /runs /runs/{id} /series /panels /profile 와 플로우 수동 실행
 import { MIN, SEC, HOUR, DAY, KST, cronNext, round } from './util.js';
+import { LITE, DEMO, SUMMIT, pick } from './profile.js';
 import { openAt } from './riskhold.js';
 import {
   hostsView, HOST_TH, groupMatch, flowLevels, flowLast, flowOf, runPublic, procsOf, startFlowRun, PANELS, isDead,
 } from './world.js';
 import {
   HOST_NAMES, ALL_NAMES, hostAt, serviceAt, batchJobAt, bizAt, logLevelsAt, riskAt, BIZ_NAMES, LOG_NAMES, JOB_NAMES,
-  QUOTE_NAMES, STAGE_NAMES, stageAt, quoteAt, quoteServiceAt, quoteRate, quoteSurgeRange,
+  QUOTE_NAMES, STAGE_NAMES, stageAt, quoteAt, quoteServiceAt, quoteRate, quoteSurgeRange, surgeStart,
 } from './signal.js';
 import { CATALOG } from './catalog.js';
 import { procsList, procsByRun, procValues, asSvc } from './procs.js';
@@ -55,7 +56,7 @@ function frState(flow, rows) {
   for (const r of rows) { const cur = latest.get(r.step_id); if (!cur || r.attempt > cur.attempt) latest.set(r.step_id, r); }
   const ls = [...latest.values()];
   if (ls.some((r) => isDead(r, flow))) return 'failed';
-  if (ls.length === flow.steps.length && ls.every((r) => r.status === 'SUCCEEDED')) return 'done';
+  if ((SUMMIT || ls.length === flow.steps.length) && ls.every((r) => r.status === 'SUCCEEDED')) return 'done'; // 시연판: 행이 없는 스텝은 무시(world.js flowLast와 같다)
   if (!ls.some((r) => r.status === 'RUNNING' || r.status === 'DISPATCHED') && ls.some((r) => r.status === 'HELD')) return 'gated';
   return 'running';
 }
@@ -142,8 +143,16 @@ function runEnd(r, now) {
   return r.service || r.status === 'RUNNING' ? now : r.ended_at;
 }
 
+// 체험판: 죽은 체결 서비스를 띄웠던 실행(w.crashRun)은 그 프로세스가 죽은 때까지 체결 지표를 낸다
+// (그 실행의 타임머신과 업무 차트의 넓은 구간에 죽기 전 값과 그 뒤 빈칸이 보이게). full에는 이 실행이 없다
+const isCrashRun = (c, r) => DEMO && !!c.w.crashRun && r === c.w.crashRun;
+function crashEnd(w) {
+  const p = w.procs.find((x) => x.exec_id === w.crashRun.exec_id && x.service && x.ended_at);
+  return p ? p.ended_at : w.crashRun.ended_at;
+}
+
 function runValues(c, r, ts) {
-  if (r === c.w.startRun) return { ...serviceAt(ts, c.sig), ...bizAt(ts, c.sig), ...logVals(ts, c.sig) };
+  if (r === c.w.startRun || isCrashRun(c, r)) return { ...serviceAt(ts, c.sig), ...bizAt(ts, c.sig), ...logVals(ts, c.sig) };
   if (r === c.w.quoteRun) return { ...quoteServiceAt(ts, c.sig), ...quoteAt(ts, c.sig), ...quoteLogVals(ts, c.sig) };
   if (r.service) return serviceAt(ts, { ...c.sig, surge: false });
   return batchJobAt(r, ts, c.sig);
@@ -162,7 +171,7 @@ export function quoteLogVals(ts, sig) {
 
 // 실행이 내는 업무 지표: 체결 서비스 실행은 biz.order.*, 시세 서비스 실행은 biz.quote.*, 나머지는 job.*만
 function ownNames(c, r) {
-  if (r === c.w.startRun) return (n) => !QUOTE_NAMES.includes(n);
+  if (r === c.w.startRun || isCrashRun(c, r)) return (n) => !QUOTE_NAMES.includes(n);
   if (r === c.w.quoteRun) return (n) => !BIZ_NAMES.includes(n);
   return (n) => JOB_NAMES.includes(n);
 }
@@ -210,7 +219,7 @@ export function seriesQuery(c, p) {
     if (p.exec_id) rs = c.w.runs.filter((r) => r.exec_id === p.exec_id);
     else {
       rs = c.w.runs.filter((r) => {
-        if (!(r === c.w.startRun || r === c.w.quoteRun || r.service || r.status === 'RUNNING')) return false;
+        if (!(r === c.w.startRun || r === c.w.quoteRun || r.service || r.status === 'RUNNING' || isCrashRun(c, r))) return false;
         if (p.host) return r.host === p.host;
         if (p.group) {
           const h = c.w.hosts.find((x) => x.id === r.host);
@@ -227,7 +236,7 @@ export function seriesQuery(c, p) {
         host: r.host,
         exec_id: r.exec_id,
         names: nm,
-        range: [r.started_at, runEnd(r, now)],
+        range: [r.started_at, isCrashRun(c, r) ? crashEnd(c.w) : runEnd(r, now)],
         at: (ts) => runValues(c, r, ts),
       });
     }
@@ -236,20 +245,41 @@ export function seriesQuery(c, p) {
   const own = /^svc:(.+)@([^@]+)$/.exec(p.exec_id || '');
   if (own) {
     const allow = new Set([...SVC_NAMES, ...LOG_NAMES]);
-    for (const pr of c.w.procs.filter((x) => x.service === own[1] && x.host === own[2] && !x.leader)) {
-      const extra = pr.sig === 'match' ? BIZ_NAMES : pr.sig === 'quote' ? QUOTE_NAMES : [];
-      const nm = names.filter((n) => allow.has(n) || extra.includes(n));
-      if (!nm.length) continue;
-      entities.push({
-        host: pr.host,
-        exec_id: p.exec_id,
-        names: nm,
-        range: [pr.started_at, pr.ended_at || now],
-        at: (ts) => ({
-          ...asSvc(procValues(pr, ts, c.sig)),
-          ...(pr.sig === 'match' ? { ...bizAt(ts, c.sig), ...logVals(ts, c.sig) } : pr.sig === 'quote' ? { ...quoteAt(ts, c.sig), ...quoteLogVals(ts, c.sig) } : {}),
-        }),
-      });
+    const extraOf = (pr) => (pr.sig === 'match' ? BIZ_NAMES : pr.sig === 'quote' ? QUOTE_NAMES : []);
+    const valuesOf = (pr, ts) => ({
+      ...asSvc(procValues(pr, ts, c.sig)),
+      ...(pr.sig === 'match' ? { ...bizAt(ts, c.sig), ...logVals(ts, c.sig) } : pr.sig === 'quote' ? { ...quoteAt(ts, c.sig), ...quoteLogVals(ts, c.sig) } : {}),
+    });
+    const prs = c.w.procs.filter((x) => x.service === own[1] && x.host === own[2] && !x.leader);
+    if (DEMO) {
+      // 체험판: 같은 주인의 프로세스들(죽은 것 · 다시 뜬 것)을 한 계열로 잇는다. 화면은 이름마다 첫 계열만 그리므로
+      // 프로세스마다 따로 내면 넓은 구간에서 죽은 프로세스의 토막만 보인다. 떠 있지 않던 동안은 점이 없다
+      const nm = names.filter((n) => allow.has(n) || prs.some((pr) => extraOf(pr).includes(n)));
+      if (prs.length && nm.length) {
+        entities.push({
+          host: own[2],
+          exec_id: p.exec_id,
+          names: nm,
+          range: [Math.min(...prs.map((pr) => pr.started_at)), Math.max(...prs.map((pr) => pr.ended_at || now))],
+          at: (ts) => {
+            const pr = prs.find((x) => ts >= x.started_at && ts <= (x.ended_at || now));
+            return pr ? valuesOf(pr, ts) : {};
+          },
+        });
+      }
+    } else {
+      for (const pr of prs) {
+        const extra = extraOf(pr);
+        const nm = names.filter((n) => allow.has(n) || extra.includes(n));
+        if (!nm.length) continue;
+        entities.push({
+          host: pr.host,
+          exec_id: p.exec_id,
+          names: nm,
+          range: [pr.started_at, pr.ended_at || now],
+          at: (ts) => valuesOf(pr, ts),
+        });
+      }
     }
   }
   const riskNames = ['risk.index', 'risk.index_open'].filter((n) => names.includes(n));
@@ -290,7 +320,7 @@ export function seriesQuery(c, p) {
   }
   if (!p.exec_id) {
     for (const name of names) {
-      if (VENDOR_SERIES[name]) series = series.concat([{ host: '', name, exec_id: '', points: grid.map((t) => [t, VENDOR_SERIES[name](t, now)]) }]);
+      if (VENDOR_SERIES[name]) series = series.concat([{ host: '', name, exec_id: '', points: grid.map((t) => [t, vendorAt(c, name, t)]) }]);
     }
   }
   return { from, to, step, series };
@@ -345,6 +375,8 @@ const VENDOR_SERIES = {
   'biz.vendor.count_1m': (t, now) => (t > now - 6 * MIN ? Math.round(4200 + (now - t) / 1000) : Math.round(71000 + 3000 * Math.sin(t / 90000))),
   'biz.vendor.tps': (t) => Math.round(1180 + 80 * Math.sin(t / 60000)),
 };
+// 시연판: 1분 시세량이 떨어진 때를 세계를 만든 때 기준(base − 6분)에 고정한다(머문 만큼 밀리지 않게. 알림 16의 시각 · 값과 맞는다, alert.js)
+const vendorAt = (c, name, t) => (SUMMIT && name === 'biz.vendor.count_1m' ? VENDOR_SERIES[name](Math.min(t, c.w.base), c.w.base) : VENDOR_SERIES[name](t, c.now));
 const VENDOR_PANEL = {
   id: 'vendor',
   title: '정보 벤더 시세',
@@ -358,7 +390,8 @@ const VENDOR_PANEL = {
   charts: [{ title: '1분 시세량', unit: '건/분', agg: 'min', metrics: ['biz.vendor.count_1m'] }],
   log_levels: ['error', 'warn'],
 };
-let panelErrors = [{ file: '시세-호가.yaml', msg: '타일 "호가 갱신": crit_below는 warn_below보다 작아야 합니다' }];
+// 체험판에는 벤더 패널과 읽지 못한 파일 줄이 없다(패널 6개)
+let panelErrors = pick([{ file: '시세-호가.yaml', msg: '타일 "호가 갱신": crit_below는 warn_below보다 작아야 합니다' }], []);
 
 function vendorView(c) {
   const mk = (t, f) => ({ ...t, value: null, state: 'none', exec_id: '', ts: c.now, reason: '', off: false, host: '', stale_since: 0, ...f });
@@ -366,7 +399,7 @@ function vendorView(c) {
   return { ...VENDOR_PANEL, tiles: [
     mk(a, { value: 4200, state: 'crit', reason: 'low', host: 'feed-03' }),
     mk(b, { value: 2360, state: 'ok' }),
-    mk(d, { value: null, state: 'crit', reason: 'stale', host: 'feed-02', stale_since: c.now - 45000 }),
+    mk(d, { value: null, state: 'crit', reason: 'stale', host: 'feed-02', stale_since: (SUMMIT ? c.w.base : c.now) - 45000 }),
     mk(e, { value: 0, state: 'ok', off: true }),
   ] };
 }
@@ -383,7 +416,7 @@ export function panelsView(c) {
       return { ...t, value, state, exec_id: value === null || !run ? '' : run.exec_id, ts: c.now, reason: lowReason(t, value, state), off: false,
         host: t.agg === 'min' && value !== null && p.id === 'quote' ? 'feed-01' : '', stale_since: 0 };
     }),
-  })).concat([vendorView(c)]);
+  })).concat(LITE ? [] : [vendorView(c)]);
 }
 
 function panels(c) {
@@ -392,6 +425,8 @@ function panels(c) {
 
 // 다시 읽기: 틀린 파일은 그대로 건너뛴다(읽은 수 = 보이는 패널 수)
 function panelsReload(c) {
+  // 시연판: 감사 기록에 남긴다(매니저 query/panels.go와 같은 글)
+  if (SUMMIT) c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor: 'user:web(127.0.0.1)', action: 'panels.reload', target: 'panels', detail: `패널 ${panelsView(c).length}개, 읽지 못한 파일 ${panelErrors.length}개` });
   return ok({ panels: panelsView(c).length, errors: panelErrors });
 }
 
@@ -414,8 +449,9 @@ const SHAPE_B = [
   ['matching_svc;main;handle_order;parse_order', 4],
 ];
 
-export function profileShape(from, to, now, surge) {
-  return surge && to > now - 4 * MIN && from < now ? SHAPE_B : SHAPE_A;
+// 구간이 폭주(start부터 지금까지)에 걸치면 B 모양. start를 안 주면 지금 − 4분(full). 체험판은 base − 4분으로 고정된 값을 넘긴다(signal.js surgeStart)
+export function profileShape(from, to, now, surge, start = now - 4 * MIN) {
+  return surge && to > start && from < now ? SHAPE_B : SHAPE_A;
 }
 
 // 시세 서비스(quote_svc): 함수도 원인도 체결 서비스와 다르다. 값은 실제 perf 표본(deploy/demo.sh quote-surge 리허설)의 leaf 비중.
@@ -453,7 +489,21 @@ export function shapeFor(c, r, from, to) {
     const sh = quoteShape(from, to, c.sig);
     return [sh, sh === QUOTE_B ? 0.99 : 0.33];
   }
-  return [profileShape(from, to, c.now, c.sig.surge), 1];
+  // 체험판은 base 뒤가 계속 최고조라 '지금'보다 앞날에 걸친 구간도 폭주 모양으로 본다
+  return [profileShape(from, to, DEMO ? Infinity : c.now, c.sig.surge, surgeStart(c.sig)), 1];
+}
+
+// 구간 [from, to]의 표본을 모양의 비중대로 나눈다(초당 49개 × CPU 비율). /profile과 원인 추적(alert.js)이 같은 숫자를 쓴다
+export function profileSplit(shape, busy, from, to) {
+  const total = Math.max(0, Math.round(((to - from) / 1000) * 49 * busy));
+  let left = total;
+  const stacks = shape.map(([frames, pct], i) => {
+    const n = i === shape.length - 1 ? left : Math.round((total * pct) / 100);
+    left -= n;
+    return { frames, samples: n };
+  });
+  stacks.sort((a, b) => b.samples - a.samples);
+  return { samples: total, stacks };
 }
 
 function profile(c) {
@@ -464,16 +514,8 @@ function profile(c) {
   const from = num(c.q.get('from')) || to - 20 * SEC;
   const got = shapeFor(c, r, from, to);
   if (!got) return ok({ exec_id: id, from, to, samples: 0, stacks: [] });
-  const [shape, busy] = got;
-  const total = Math.max(0, Math.round(((to - from) / 1000) * 49 * busy));
-  let left = total;
-  const stacks = shape.map(([frames, pct], i) => {
-    const n = i === shape.length - 1 ? left : Math.round((total * pct) / 100);
-    left -= n;
-    return { frames, samples: n };
-  });
-  stacks.sort((a, b) => b.samples - a.samples);
-  return ok({ exec_id: id, from, to, samples: total, stacks });
+  const { samples, stacks } = profileSplit(got[0], got[1], from, to);
+  return ok({ exec_id: id, from, to, samples, stacks });
 }
 
 function runFlow(c, m) {
@@ -482,6 +524,8 @@ function runFlow(c, m) {
   const last = flowLast(c.w, f);
   if (last && last.status === 'RUNNING') return err(409, '이전 실행이 진행 중');
   const fr = startFlowRun(c.w, f, c.now, 'manual');
+  // 체험판: '지금 실행'도 감사 기록에 남긴다(매니저 sched/manual.go와 같은 글)
+  if (DEMO) c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor: 'user:web(127.0.0.1)', action: 'run.manual', target: f.id, detail: `flow_run_id=${fr.id} 스텝 ${f.steps.length}개` });
   return ok({ flow_run_id: fr.id }, 201);
 }
 

@@ -104,6 +104,7 @@ export function dispose() { for (const d of disposers) { try { d(); } catch (e) 
 export async function render(root, params, query) {
   dispose();
   root.classList.add('srv');
+  disposers.push(() => root.classList.remove('srv')); // 떠날 때 지운다(#page는 모든 화면이 같이 쓴다)
   if (params && params.id) await renderHost(root, params, query || {});
   else await renderList(root, query || {});
 }
