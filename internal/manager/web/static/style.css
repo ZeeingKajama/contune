@@ -51,6 +51,8 @@ input, select, textarea { font:inherit; color:var(--t1); background:var(--surfac
 .grow { flex:1; }
 .empty { color:var(--t3); }
 .sec { font-size:15px; margin:0 0 8px; font-weight:600; }
+/* 카드 칸 하나(화면 클래스 .rbox .bt-card .bz-card .dcard .dpanel .srv-cell .tm-card .ex-card .rn-card는 차이만 덧붙인다) */
+.card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:10px 12px; min-width:0; }
 
 #top { display:flex; align-items:center; gap:16px; height:44px; padding:0 16px; background:var(--surface); border-bottom:1px solid var(--line); flex:none; z-index:var(--z-top); }
 .logo { font-weight:700; font-size:18px; text-decoration:none; letter-spacing:1px; }

@@ -133,7 +133,7 @@ async function renderList(root, query) {
   const errBox = el('div');
   const head = el('div', { class: 'rn-ch' });
   const scroll = el('div', { class: 'rn-scroll sv-scroll' });
-  root.append(errBox, el('section', { class: 'rn-card sv-card' }, head, scroll));
+  root.append(errBox, el('section', { class: 'card rn-card sv-card' }, head, scroll));
   let panelTitle = {};
   try { panelTitle = Object.fromEntries(((await api('/panels')).panels || []).map((p) => [p.id, p.title])); } catch (e) { /* 패널 ID로 */ }
   const reload = gate(el('button', { type: 'button', class: 'ghost', text: '다시 읽기', title: '손으로 고친 서비스 정의 파일을 반영합니다', onclick: (ev) => act(ev.currentTarget, async () => {
@@ -245,14 +245,14 @@ async function renderTM(root, id, query) {
   const kpis = el('div', { class: 'bt-kpis tm-kpis' });
   const lgCnt = el('span', { class: 'lg-cnt num' });
   const lgBody = el('div');
-  const lgCard = el('section', { class: 'tm-card sv-lg', hidden: true },
+  const lgCard = el('section', { class: 'card tm-card sv-lg', hidden: true },
     el('div', { class: 'tm-ch' }, el('h3', { class: 'sec', text: '계보' }),
       info('고른 구간에 이 서버의 이 서비스를 띄운 실행(플로우 › 스텝)과, 그 실행이 같이 띄운 프로세스. 부모 프로세스로 잇고, 부모 기록이 없으면(데몬처럼 부모를 끊고 나간 것) 스텝 명령 바로 아래에 둔다. 테두리가 굵은 칸이 이 서비스'),
       el('span', { class: 'grow' }), lgCnt),
     lgBody);
   const toolbar = el('div', { class: 'tm-tools' });
   const tracks = el('div', { class: 'tm-tracks' });
-  const metricCard = el('section', { class: 'tm-card' },
+  const metricCard = el('section', { class: 'card tm-card' },
     el('div', { class: 'tm-ch' }, el('h3', { class: 'sec', text: '지표' }),
       info('이 서버의 이 서비스(재기동해도 같은 서비스)를 고른 구간에서 본다. 세로선은 기동·종료 보고서. 차트를 끌어 기준(A) 구간을, 한 번 더 끌어 비교(B) 구간을 고르면 아래 프로파일이 두 구간을 비교한다'),
       el('span', { class: 'grow' }),
@@ -261,12 +261,12 @@ async function renderTM(root, id, query) {
   const vEl = el('div', { class: 'tm-verdict' });
   const flames = el('div', { class: 'flame-pair' });
   const cmpEl = el('div', { class: 'tm-cmp' });
-  const profCard = el('section', { class: 'tm-card' },
+  const profCard = el('section', { class: 'card tm-card' },
     el('div', { class: 'tm-ch' }, el('h3', { class: 'sec', text: '프로파일' }), info('CPU 샘플링 프로파일(플레임 그래프). 두 구간이 재기동을 사이에 두어도 같은 서비스로 비교한다. 칸 너비 = 그 함수와 그 아래 호출이 차지한 샘플 비중. 표의 Self 비중은 그 함수 자체에서 머문 비중')),
     vEl, flames, cmpEl);
   const tabsEl = el('div', { class: 'tm-tabs', role: 'tablist' });
   const pane = el('div', { class: 'tm-pane' });
-  const logCard = el('section', { class: 'tm-card tm-logcard' }, tabsEl, pane);
+  const logCard = el('section', { class: 'card tm-card tm-logcard' }, tabsEl, pane);
   page.append(head, lgCard, kpis, rangeBar, metricCard, profCard, logCard);
 
   function drawHead() {

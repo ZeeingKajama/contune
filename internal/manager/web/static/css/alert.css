@@ -2,7 +2,6 @@
 .acked { color:var(--t3); font-variant-numeric:tabular-nums; }
 .tbl a { color:var(--accent); text-decoration:none; } .tbl a:hover { text-decoration:underline; }
 .rtop { display:grid; grid-template-columns:1fr 1.2fr; gap:12px; margin-bottom:12px; }
-.rbox { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); padding:10px 12px; min-width:0; }
 .ridx { display:flex; align-items:center; gap:10px; }
 .rbig { font-size:44px; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; color:var(--t1); }
 .rnote { margin-top:4px; font-size:var(--fs-md); color:var(--t2); }

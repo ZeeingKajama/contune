@@ -417,7 +417,7 @@ export const offTip = (t) => `감시 시간 ${t.active || ''}: 이 시간 밖에
 const go = (h) => { location.hash = h; };
 // 카드는 div이고 맨 앞의 빈 링크(.dc-go)가 카드 전체를 덮는다. 안의 줄 링크·단추는 그 위에 올라 따로 눌린다(a 안에 a를 두지 않는다).
 function card(cls, title, href, inner) {
-  const c = el('div', { class: `dcard ${cls}` });
+  const c = el('div', { class: `card dcard ${cls}` });
   c.innerHTML = `<a class="dc-go" href="${esc(href)}" aria-label="${esc(title)}"></a><div class="dc-t">${esc(title)}</div>${inner}`;
   return c;
 }
@@ -515,7 +515,7 @@ export function serverMap(hs) {
   const lg = el('span', { class: 'legend', title: `CPU 0–25 · 25–45 · 45–60 · 60–70 / ${LEVEL_TEXT.warn} · ${LEVEL_TEXT.crit} · ${LEVEL_TEXT.silent}` });
   lg.innerHTML = '<span class="lt">CPU</span><span class="c ok l1"></span><span class="c ok l2"></span><span class="c ok l3"></span><span class="c ok l4"></span>' +
     '<span class="c warn">!</span><span class="c crit">✕</span><span class="c silent">–</span>';
-  const box = el('section', { class: 'dpanel dmap' }, el('div', { class: 'dp-h' }, el('h2', { class: 'sec', text: '서버 맵' }), lg));
+  const box = el('section', { class: 'card dpanel dmap' }, el('div', { class: 'dp-h' }, el('h2', { class: 'sec', text: '서버 맵' }), lg));
   const rows = groupRows(hs);
   box.dataset.cols = String(Math.max(1, ...rows.map((r) => r.hosts.length)));
   for (const r of rows) {
@@ -543,7 +543,7 @@ export function eventList(alerts, panels, hs, flows) {
     const b = badgeHTML(k, levelCountText(k, c[k], c.open[k]));
     return c.open[k] ? b : `<span class="dp-acked">${b}</span>`;
   }).join('');
-  const box = el('section', { class: 'dpanel dwatch' }, el('div', { class: 'dp-h' }, el('h2', { class: 'sec', text: '실시간 이벤트' }), counts));
+  const box = el('section', { class: 'card dpanel dwatch' }, el('div', { class: 'dp-h' }, el('h2', { class: 'sec', text: '실시간 이벤트' }), counts));
   const list = el('div', { class: 'wl' });
   const now = Date.now();
   for (const a of sortAlerts(alerts)) {
@@ -605,7 +605,7 @@ export function timeline(hours, now, pick, onPick) {
     sum.failed ? el('b', { class: 'bad', text: ` · 실패 ${fmtNum(sum.failed)}` }) : null, ` · 남은 예정 ${fmtNum(sum.plans)}회`);
   const lg = el('span', { class: 'tl-lg' });
   lg.innerHTML = HOUR_KEYS.map((k) => `<span class="${k}"><i></i>${esc(HOUR_TEXT[k])}</span>`).join('');
-  const box = el('section', { class: 'dpanel dtl' },
+  const box = el('section', { class: 'card dpanel dtl' },
     el('div', { class: 'dp-h' }, el('h2', { class: 'sec', text: '시간대별 배치' }), sumEl,
       info('오늘 0~24시. 막대 = 그 시간에 시작한 플로우 수(같은 플로우가 여러 번 돌면 가장 나쁜 상태로 하나), 숫자 = 플로우 수, 점선 = 지금 뒤 남은 예정, 세로선 = 지금. 막대를 누르면 그 시간의 플로우 목록'),
       el('span', { class: 'grow' }), lg),

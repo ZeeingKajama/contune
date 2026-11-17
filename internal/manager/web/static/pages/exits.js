@@ -38,7 +38,7 @@ export async function render(host, params, query = {}) {
   const rangeBar = el('div', { class: 'rn-range' });
   const filters = el('div', { class: 'rn-filters' });
   const cache = {}; // 바뀔 때만 다시 그리기
-  const listCard = el('section', { class: 'rn-card rn-listcard' });
+  const listCard = el('section', { class: 'card rn-card rn-listcard' });
   host.append(head, rangeBar, filters, listCard);
   tr = createTimeRange(rangeBar, { def: '24h' });
 

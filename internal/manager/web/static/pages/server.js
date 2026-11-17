@@ -337,7 +337,7 @@ async function drawCharts(container, charts, ctx, opt = {}) {
   const grid = el('div', { class: 'srv-grid' });
   container.replaceChildren(grid);
   if (!charts.length) { grid.append(el('div', { class: 'empty', text: EMPTY.none })); return null; }
-  const cells = charts.map((c) => ({ c, host: el('div', { class: 'srv-cell' }), chart: null }));
+  const cells = charts.map((c) => ({ c, host: el('div', { class: 'card srv-cell' }), chart: null }));
   cells.forEach((x) => grid.append(x.host));
   const names = [...new Set(charts.flatMap((c) => c.metrics.map((m) => m.name)))].join(',');
   const fetchAll = async (rg) => pointsByName(await api(seriesPath({ host: ctx.hostId, exec_id: opt.execId, name: names, from: rg.from, to: rg.to })));

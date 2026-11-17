@@ -26,7 +26,7 @@ code.ex-mono { background:none; padding:0; color:inherit; }
 .ex-kpis .bt-kpi .kv .ex-mono.num { font-size:15px; }
 
 /* 칸 */
-.ex-card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); padding:12px 14px; min-width:0; scroll-margin-top:8px; }
+.ex-card { padding:12px 14px; scroll-margin-top:8px; }
 .ex-ch { display:flex; align-items:center; gap:6px 10px; flex-wrap:wrap; margin-bottom:10px; }
 .ex-ch .sec { margin:0; }
 .ex-subh { font-size:var(--fs-sm); font-weight:600; color:var(--t2); margin:0 0 6px; }

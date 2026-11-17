@@ -73,7 +73,7 @@ function missing(err) {
 
 // 위험도 한 줄: 숫자 · 수준 · 전체와 이상 없음 수 · 뜻(ⓘ). 진행 중 장애는 그 아래 한 줄.
 function headBox(risk, err) {
-  const box = el('section', { class: 'rbox rhead' });
+  const box = el('section', { class: 'card rbox rhead' });
   if (!risk) { box.append(missing(err)); return box; }
   const now = risk.now || Date.now();
   const lv = openLevel(risk), ov = openValue(risk), acc = acceptsOf(risk).length;
@@ -141,7 +141,7 @@ function heldRow(f, now, act) {
 }
 
 function checkBox(risk, stats, ctx, act, formFeature, err) {
-  const box = el('section', { class: 'rbox rcheck' }, el('h2', { class: 'sec', text: '점검 항목' }));
+  const box = el('section', { class: 'card rbox rcheck' }, el('h2', { class: 'sec', text: '점검 항목' }));
   if (!risk) { box.append(missing(err)); return box; }
   const now = risk.now || Date.now();
   const { open, held } = checkRows(risk);
@@ -159,7 +159,7 @@ function checkBox(risk, stats, ctx, act, formFeature, err) {
 // 주소 ?open=hold,model,inc 로도 남긴다(새로 고침·링크 공유에 유지)
 export const FOLD_QUERY = { holds: 'hold', model: 'model', incidents: 'inc' };
 function fold(key, summary, body, opened) {
-  const d = el('details', { class: 'rbox rfold', open: opened.has(key) });
+  const d = el('details', { class: 'card rbox rfold', open: opened.has(key) });
   d.addEventListener('toggle', () => {
     if (d.open === opened.has(key)) return;
     if (d.open) opened.add(key); else opened.delete(key);
@@ -267,7 +267,7 @@ function incidentFold(incidents, leadSec, reload, opened) {
       a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     }, { fail: '내려받지 못함' }) }), 'operator');
   const tools = fold('incident-add', [el('b', { text: '추가 · 가져오기' })], [f, el('div', { class: 'icsv' }, ta, el('div', { class: 'irow' }, imp, dl, out))], opened);
-  tools.classList.remove('rbox');
+  tools.classList.remove('card', 'rbox');
   const sum = `${fmtNum(incidents.length)}건${open ? ` · 진행 중 ${open}` : ''}`;
   const tip = info(`학습 라벨: 직접·가져옴·시연 기록과 장애로 확인한 자동 기록. 장애 시작 전 ${lead}분을 "곧 장애"로 배우고, 장애 중과 확인 전 자동 기록은 뺍니다.`);
   return fold('incidents', [el('b', { text: '장애 기록' }), el('span', { text: sum }), unconf ? el('span', { class: 'iunconf', text: `확인 전 자동 ${unconf}` }) : null, tip], [tbl, tools], opened);
@@ -283,7 +283,7 @@ export function render(root, params, query) {
   root.innerHTML = '';
   const trHost = el('div');
   const head = el('div'), check = el('div');
-  const mid = el('section', { class: 'rbox' }, el('h2', { class: 'sec', text: '추이' }));
+  const mid = el('section', { class: 'card rbox' }, el('h2', { class: 'sec', text: '추이' }));
   const folds = el('div', { class: 'rfolds' });
   const chartHost = el('div');
   mid.append(trHost, chartHost);

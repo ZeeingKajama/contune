@@ -25,7 +25,6 @@
 .tm-kpis .bt-kpi .kv.c-crit .num { color:var(--crit); }
 @media (max-width:1200px) { .tm-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 
-.tm-card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); padding:10px 12px; min-width:0; }
 .tm-ch { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
 .tm-ch .sec { margin:0; }
 .tm-lg { display:inline-flex; align-items:center; gap:6px; font-size:var(--fs-xs); color:var(--t3); }

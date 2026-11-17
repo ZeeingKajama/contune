@@ -360,13 +360,13 @@ export async function render(root, params) {
   }
 
   // 원인(규칙 판단). 제목은 머리에 있다.
-  const cause = el('section', { class: `ex-card ex-cause ${level}`, id: 'ex-cause' },
+  const cause = el('section', { class: `card ex-card ex-cause ${level}`, id: 'ex-cause' },
     el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: '원인' }), verdict(rule),
       info('근거 묶음만 보고 규칙이 가린 원인. 근거를 누르면 그 칸으로 간다')),
     diagBody(rule, have));
 
   // 호출 스택
-  const stackCard = el('section', { class: 'ex-card', id: 'ex-ev-core' });
+  const stackCard = el('section', { class: 'card ex-card', id: 'ex-ev-core' });
   function drawStack() {
     const ch = el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: '호출 스택' }),
       info('신호를 받은 스레드의 호출 스택. #0이 크래시 지점, 아래로 갈수록 호출한 쪽. 실행 파일 프레임은 진하게, 라이브러리 프레임은 흐리게, 추정 프레임은 기울여 그린다'));
@@ -409,7 +409,7 @@ export async function render(root, params) {
   }
 
   // 소스(카드 Q): 토막마다 머리(파일:줄 · 함수 · 뽑은 까닭) · 줄 번호와 코드 · 최근 변경. 첫 토막만 펼친다.
-  const srcCard = code.length ? el('section', { class: 'ex-card ex-src', id: 'ex-ev-source' }) : null;
+  const srcCard = code.length ? el('section', { class: 'card ex-card ex-src', id: 'ex-ev-source' }) : null;
   function drawSource() {
     const cv = pk.code_version || null;
     const sev = evs.get('source');
@@ -468,7 +468,7 @@ export async function render(root, params) {
   }
 
   // 직전 상황: 근거 한 줄 = 왼쪽 이름 · 오른쪽 요약과 내용
-  const prior = el('section', { class: 'ex-card' }, el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: '직전 상황' }),
+  const prior = el('section', { class: 'card ex-card' }, el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: '직전 상황' }),
     info('죽기 전 프로세스·서버 지표, 직전 프로파일, 애플리케이션 로그, 표준 출력, 커널 로그, 같은 서버의 다른 실행·운영자 조작')));
   const evLines = (e) => {
     if ((e.lines || []).length) return e.lines;
@@ -535,7 +535,7 @@ export async function render(root, params) {
   prior.append(priorItems.length ? el('div', { class: 'ex-evs' }, priorItems.map(evBlock)) : el('p', { class: 'empty', text: '직전 상황 근거 없음' }));
 
   // 종료 정보: 신호·core(왼쪽) · 프로세스(오른쪽)
-  const infoCard = el('section', { class: 'ex-card', id: 'ex-ev-exit' });
+  const infoCard = el('section', { class: 'card ex-card', id: 'ex-ev-exit' });
   {
     const howTxt = rep.how === 'signal' ? '신호로 종료' : rep.how === 'exit' ? '스스로 종료' : '모름';
     const codeTxt = core && core.code_name ? `${core.code_name} · ${core.code_text || CODE_TEXT[core.code_name] || '설명 없음'}` : null;
@@ -576,7 +576,7 @@ export async function render(root, params) {
   }
 
   // LLM 참고 초안
-  const llmCard = el('section', { class: 'ex-card ex-llm', id: 'ex-llm' });
+  const llmCard = el('section', { class: 'card ex-card ex-llm', id: 'ex-llm' });
   async function getPrompt() {
     if (!st.prompt) st.prompt = await api(`/exits/${q(id)}/prompt`);
     return st.prompt;
@@ -697,7 +697,7 @@ export async function render(root, params) {
 
   // 수집하지 못한 정보
   const notes = [...(rep.notes || []), ...((core && core.notes) || [])];
-  const notesCard = notes.length ? el('section', { class: 'ex-card ex-notes' }, el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: '수집하지 못한 정보' })),
+  const notesCard = notes.length ? el('section', { class: 'card ex-card ex-notes' }, el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: '수집하지 못한 정보' })),
     el('ul', {}, notes.map((s) => el('li', { text: s })))) : null;
 
   drawStack();

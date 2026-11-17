@@ -186,7 +186,7 @@ async function renderBoard(host, params, query) {
   const cards = el('div', { class: 'bt-cards', role: 'tablist', 'aria-label': '배치판' });
   const warn = el('div');
   const filt = el('div', { class: 'bt-seg', role: 'group', 'aria-label': '상태' });
-  const body = el('div', { class: 'bt-card bt-tablebox' });
+  const body = el('div', { class: 'card bt-card bt-tablebox' });
   host.append(head, cards, warn, el('div', { class: 'bt-bar' }, filt), body);
   setTitle('배치');
   body.replaceChildren(stateBox('loading'));
@@ -416,7 +416,7 @@ async function renderFlow(host, params, query) {
     const f = S.flow;
     const steps = stepOrder(f);
     const cols = S.frs.slice(-30);
-    if (!cols.length) return [el('div', { class: 'bt-card bt-emptybox', text: '실행 이력 없음' })];
+    if (!cols.length) return [el('div', { class: 'card bt-card bt-emptybox', text: '실행 이력 없음' })];
     const maxDur = Math.max(1, ...cols.map((c) => (c.ended_at || S.now) - c.started_at));
     const cur = selRun();
     const grid = el('div', { class: 'bt-grid', style: `--n:${cols.length}` });
@@ -479,10 +479,10 @@ async function renderFlow(host, params, query) {
       empty: '스텝 실행 없음',
     });
     return [
-      el('div', { class: 'bt-card bt-gridbox' }, el('div', { class: 'bt-gridscroll' }, grid), legend),
+      el('div', { class: 'card bt-card bt-gridbox' }, el('div', { class: 'bt-gridscroll' }, grid), legend),
       el('div', { class: 'bt-subhead' }, el('h3', { class: 'sec', text: '스텝 실행' }), el('span', { class: 'bt-dim', text: cur ? `${fmtDT(cur.started_at)} 플로우 실행` : '' }),
         el('span', { class: 'bt-sp' }), el('a', { class: 'bt-link', href: '#runs?flow=' + encodeURIComponent(id) + '&range=7d', text: '전체 실행 이력 →' })),
-      el('div', { class: 'bt-card bt-tablebox' }, tbl),
+      el('div', { class: 'card bt-card bt-tablebox' }, tbl),
     ];
   }
 
@@ -490,7 +490,7 @@ async function renderFlow(host, params, query) {
   function paneGantt() {
     const f = S.flow;
     const fr = selRun();
-    if (!fr) return [el('div', { class: 'bt-card bt-emptybox', text: '실행 이력 없음' })];
+    if (!fr) return [el('div', { class: 'card bt-card bt-emptybox', text: '실행 이력 없음' })];
     const steps = stepOrder(f);
     const all = steps.flatMap((s) => fr.steps[s.id] || []);
     const t0 = Math.min(...all.map((r) => r.scheduled_at || r.started_at).filter(Boolean), fr.started_at);
@@ -527,7 +527,7 @@ async function renderFlow(host, params, query) {
         track,
         el('div', { class: 'gt-dur num', text: total }));
     });
-    return [pickerRow(), el('div', { class: 'bt-card bt-gantt' },
+    return [pickerRow(), el('div', { class: 'card bt-card bt-gantt' },
       el('div', { class: 'gt-row gt-head' }, el('div', { class: 'gt-label bt-dim', text: '스텝' }), ticks, el('div', { class: 'gt-dur bt-dim', text: '소요 시간' })),
       ...rows,
       el('div', { class: 'fg-legend' },
@@ -541,10 +541,10 @@ async function renderFlow(host, params, query) {
       S.defLoading = true;
       api(`/flows/${encodeURIComponent(id)}/def`).then((d) => { S.def = d; }).catch((e) => { S.defErr = e; }).finally(() => { S.defLoading = false; if (S.tab === 'def') drawPane(); });
     }
-    if (!S.def && !S.defErr) return [el('div', { class: 'bt-card bt-emptybox' }, stateBox('loading'))];
-    if (S.defErr) return [el('div', { class: 'bt-card bt-emptybox' }, stateBox('error', { text: '정의를 불러오지 못함', e: S.defErr, retry: () => { S.defErr = null; drawPane(); } }))];
+    if (!S.def && !S.defErr) return [el('div', { class: 'card bt-card bt-emptybox' }, stateBox('loading'))];
+    if (S.defErr) return [el('div', { class: 'card bt-card bt-emptybox' }, stateBox('error', { text: '정의를 불러오지 못함', e: S.defErr, retry: () => { S.defErr = null; drawPane(); } }))];
     const d = S.def;
-    return [el('div', { class: 'bt-card bt-def' },
+    return [el('div', { class: 'card bt-card bt-def' },
       el('div', { class: 'bt-defhead' }, el('code', { text: d.file || '' }), el('span', { class: 'bt-sp' }),
         d.sha ? el('span', { class: 'bt-dim', text: 'sha ' + String(d.sha).slice(0, 8) }) : null,
         edit ? el('a', { class: 'bt-btn', href: '#edit/' + encodeURIComponent(id), text: '편집' }) : null),
@@ -557,9 +557,9 @@ async function renderFlow(host, params, query) {
       S.histLoading = true;
       api(`/flows/${encodeURIComponent(id)}/history`).then((d) => { S.hist = d.entries || []; }).catch((e) => { S.histErr = e; }).finally(() => { S.histLoading = false; if (S.tab === 'history') drawPane(); });
     }
-    if (!S.hist && !S.histErr) return [el('div', { class: 'bt-card bt-emptybox' }, stateBox('loading'))];
-    if (S.histErr) return [el('div', { class: 'bt-card bt-emptybox' }, stateBox('error', { text: '변경 이력을 불러오지 못함', e: S.histErr, retry: () => { S.histErr = null; drawPane(); } }))];
-    if (!S.hist.length) return [el('div', { class: 'bt-card bt-emptybox', text: '변경 기록이 없습니다(편집기로 저장·삭제한 것만 남습니다)' })];
+    if (!S.hist && !S.histErr) return [el('div', { class: 'card bt-card bt-emptybox' }, stateBox('loading'))];
+    if (S.histErr) return [el('div', { class: 'card bt-card bt-emptybox' }, stateBox('error', { text: '변경 이력을 불러오지 못함', e: S.histErr, retry: () => { S.histErr = null; drawPane(); } }))];
+    if (!S.hist.length) return [el('div', { class: 'card bt-card bt-emptybox', text: '변경 기록이 없습니다(편집기로 저장·삭제한 것만 남습니다)' })];
     const t = el('table', { class: 'au-hist' });
     t.append(el('thead', {}, el('tr', {}, ['시각', '사용자', '행동', '내용'].map((h) => el('th', { text: h })))));
     t.append(el('tbody', {}, S.hist.map((e) => el('tr', {},
@@ -567,7 +567,7 @@ async function renderFlow(host, params, query) {
       el('td', { text: actorName(e.actor), title: e.actor }),
       el('td', {}, actionCell(e.action)),
       el('td', { class: 'dt', text: e.detail || DASH })))));
-    return [el('div', { class: 'bt-card bt-tablebox' }, t)];
+    return [el('div', { class: 'card bt-card bt-tablebox' }, t)];
   }
 
   function drawPane(reset) {
@@ -668,7 +668,7 @@ async function renderFlow(host, params, query) {
     if (!f) {
       titleRow.replaceChildren(el('h2', { class: 'bt-h', text: id }));
       kpis.replaceChildren(); tabs.replaceChildren();
-      pane.replaceChildren(el('div', { class: 'bt-card bt-emptybox', text: '플로우를 찾을 수 없음' }));
+      pane.replaceChildren(el('div', { class: 'card bt-card bt-emptybox', text: '플로우를 찾을 수 없음' }));
       return;
     }
     S.flow = f;

@@ -168,8 +168,8 @@ export async function render(host, params, query = {}) {
   const filters = el('div', { class: 'rn-filters' });
   const cache = {}; // 주기 갱신에서 바뀔 때만 다시 그리기(ui.changed)
   const kpis = el('div', { class: 'bt-kpis rn-kpis' });
-  const histCard = el('section', { class: 'rn-card rn-histcard' });
-  const listCard = el('section', { class: 'rn-card rn-listcard' });
+  const histCard = el('section', { class: 'card rn-card rn-histcard' });
+  const listCard = el('section', { class: 'card rn-card rn-listcard' });
   host.append(head, rangeBar, filters, kpis, histCard, listCard);
   tr = createTimeRange(rangeBar, { def: '24h' });
 

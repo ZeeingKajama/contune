@@ -48,7 +48,7 @@ export async function render(host, params, query = {}) {
   const head = el('div', { class: 'rn-head au-head' }, el('h2', { class: 'sec', text: '감사 기록' }), el('span', { class: 'grow' }), csv);
   const kpis = el('div', { class: 'bt-kpis au-kpis' });
   const filters = el('div', { class: 'rn-filters au-filters' });
-  const listCard = el('section', { class: 'rn-card rn-listcard' });
+  const listCard = el('section', { class: 'card rn-card rn-listcard' });
   host.append(head, rangeBar, kpis, listCard);
   tr = createTimeRange(rangeBar, { def: '24h' });
 

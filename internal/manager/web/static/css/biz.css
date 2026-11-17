@@ -5,7 +5,6 @@
 .bz-range .trange { margin-bottom:0; }
 .bz-h { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
 .bz-h .sec { margin:0; }
-.bz-card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); padding:10px 12px; min-width:0; }
 
 /* 핵심 지표: 골든 시그널 묶음. 4열 격자에 묶음마다 타일 수만큼 칸을 차지한다. */
 .bz-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; grid-auto-flow:row dense; }

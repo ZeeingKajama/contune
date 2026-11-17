@@ -325,7 +325,7 @@ function draw(body, panel, query = {}) {
   body.append(chartSec);
   const nCharts = (panel.charts || []).length;
   const hosts = (panel.charts || []).map((c, i) => {
-    const h = el('div', { class: 'bz-card' + (nCharts % 2 && i === nCharts - 1 ? ' wide' : '') });
+    const h = el('div', { class: 'card bz-card' + (nCharts % 2 && i === nCharts - 1 ? ' wide' : '') });
     chartBox.append(h);
     return { def: c, host: h, chart: null };
   });
@@ -364,8 +364,8 @@ function draw(body, panel, query = {}) {
 
   // ---- 3. 로그 · 활성 알림 ----
   const lower = el('div', { class: 'bz-lower' });
-  const logSec = el('section', { class: 'bz-card bz-logs' });
-  const alSec = el('section', { class: 'bz-card bz-alerts' });
+  const logSec = el('section', { class: 'card bz-card bz-logs' });
+  const alSec = el('section', { class: 'card bz-card bz-alerts' });
   lower.append(logSec, alSec);
   body.append(lower);
   const logs = logExplorer(logSec, panel, query);

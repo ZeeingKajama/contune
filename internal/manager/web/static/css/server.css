@@ -31,7 +31,7 @@
 .srv-bar .trange { margin-bottom:12px; }
 .srv-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px; margin-bottom:12px; }
 @media (max-width:900px) { .srv-grid { grid-template-columns:minmax(0,1fr); } }
-.srv-cell { min-width:0; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:10px 14px 8px; }
+.srv-cell { padding:10px 14px 8px; }
 .srv-cell .chart { margin:0; }
 .srv-none { display:flex; align-items:center; justify-content:center; gap:4px; }
 .srv-empty { padding:8px 0 4px; }

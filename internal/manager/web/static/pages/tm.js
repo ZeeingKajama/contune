@@ -184,21 +184,21 @@ export async function render(host, params, query = {}) {
   const toolbar = el('div', { class: 'tm-tools' });
   const movedEl = el('div', { class: 'tm-moved', hidden: true });
   const tracks = el('div', { class: 'tm-tracks' });
-  const procCard = el('section', { class: 'tm-card tm-procs', hidden: true });
+  const procCard = el('section', { class: 'card tm-card tm-procs', hidden: true });
   const chipsEl = el('span', { class: 'tm-pcs' }); // 머리의 기동한 프로세스 칩(실행 이력과 같은 칩)
-  const metricCard = el('section', { class: 'tm-card' },
+  const metricCard = el('section', { class: 'card tm-card' },
     el('div', { class: 'tm-ch' }, el('h3', { class: 'sec', text: '지표' }), info('실행 앞뒤를 실행 길이만큼(30초~5분) 함께 본다. 차트를 끌어 기준(A) 구간을, 한 번 더 끌어 비교(B) 구간을 고르면 아래 프로파일이 두 구간을 비교한다'),
       el('span', { class: 'grow' }), el('span', { class: 'tm-lg' }, el('i', { class: 'mk' }), '실행 시작 · 종료', el('i', { class: 'th' }), '경고 · 위험 기준')),
     toolbar, movedEl, tracks);
   const vEl = el('div', { class: 'tm-verdict' });
   const flames = el('div', { class: 'flame-pair' });
   const cmpEl = el('div', { class: 'tm-cmp' });
-  const profCard = el('section', { class: 'tm-card' },
+  const profCard = el('section', { class: 'card tm-card' },
     el('div', { class: 'tm-ch' }, el('h3', { class: 'sec', text: '프로파일' }), info('CPU 샘플링 프로파일(플레임 그래프). 칸 너비 = 그 함수와 그 아래 호출이 차지한 샘플 비중. 칸을 누르면 확대. 표의 Self 비중은 그 함수 자체에서 머문 비중')),
     vEl, flames, cmpEl);
   const tabsEl = el('div', { class: 'tm-tabs', role: 'tablist' });
   const pane = el('div', { class: 'tm-pane' });
-  const logCard = el('section', { class: 'tm-card tm-logcard' }, tabsEl, pane);
+  const logCard = el('section', { class: 'card tm-card tm-logcard' }, tabsEl, pane);
   // 이 실행의 프로세스 종료 보고가 있으면 맨 위 띠(종료 보고서로 가는 링크)
   const exitBar = exitStrip(exits) || el('div', { hidden: true });
   host.append(exitBar, head, procCard, kpis, metricCard, profCard, logCard);

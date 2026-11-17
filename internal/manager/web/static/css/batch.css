@@ -13,7 +13,7 @@ button.danger:hover:not(:disabled) { border-color:var(--crit); }
 .bt-link { color:var(--accent); text-decoration:none; font-size:var(--fs-md); }
 .bt-link:hover { text-decoration:underline; }
 .bt-warn { background:var(--surface); border:1px solid var(--warn); border-left-width:4px; padding:6px 10px; margin-bottom:8px; color:var(--t1); border-radius:var(--r-sm); }
-.bt-card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); }
+.bt-card { padding:0; min-width:auto; } /* 안쪽 여백은 .bt-tablebox 등 칸마다 */
 .bt-tablebox { padding:2px 8px 4px; }
 .bt-tablebox .tbl tr:last-child td { border-bottom:0; }
 .bt-emptybox { padding:24px; text-align:center; color:var(--t3); }

@@ -2,7 +2,7 @@
 
 /* 요약 카드 */
 .cards { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
-.dcard { display:flex; flex-direction:column; text-decoration:none; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); padding:10px 12px; min-height:142px; min-width:0; container-type:inline-size; }
+.dcard { display:flex; flex-direction:column; text-decoration:none; min-height:142px; container-type:inline-size; }
 .dcard:hover { border-color:var(--accent); }
 .dc-t { font-size:var(--fs-md); font-weight:600; color:var(--t2); margin-bottom:6px; }
 .dc-body { display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
@@ -103,7 +103,6 @@
 .lower .dwatch .wl { flex:1 1 0; min-height:160px; max-height:none; }
 
 /* 서버 맵 · 실시간 이벤트 */
-.dpanel { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); padding:10px 12px; min-width:0; }
 .dp-h { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
 .dp-h .sec { margin:0; flex:1; }
 .dp-c { display:flex; gap:4px; }
