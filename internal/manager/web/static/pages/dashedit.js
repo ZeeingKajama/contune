@@ -3,7 +3,7 @@
 // 정의(model.Dash, json 이름)를 그대로 고치고, 바뀔 때마다 미리보기에 복사본을 넘긴다(board.setDash).
 // AI 초안(카드 N): POST /assist/dash가 준 정의로 갈아 끼우고(저장 안 함) 되돌리기를 둔다. 검사 오류는 문제 칸에.
 import { api, ApiError } from '../api.js';
-import { el, toast, confirmBox, info, DASH } from '../ui.js';
+import { el, toast, confirmBox, info, trapFocus, leaveGuard, errText, DASH } from '../ui.js';
 import { can, roleName } from '../auth.js';
 import { WIDGETS, TYPE_ORDER, KIND_TEXT, AGGS, BYS, REDUCES, RANGES, sized, widgetTitle } from '../widgets/index.js';
 import { mountBoard } from './dash.js';
@@ -315,7 +315,6 @@ export function dispose() {
   for (const f of cleanups.splice(0)) { try { f(); } catch (e) { /* 무시 */ } }
 }
 
-const errText = (e) => (e instanceof ApiError ? e.error || `오류 ${e.status}` : String(e));
 const idOfFile = (f) => String(f || '').replace(/^.*\//, '').replace(/\.ya?ml$/, '');
 const viewHref = (id) => `#dash/${encodeURIComponent(id)}`;
 
@@ -427,11 +426,11 @@ function mount(page, st, refs, ctx) {
   };
 
   const idIn = st.isNew ? el('input', { type: 'text', class: 'de-mono', value: st.id, maxlength: '64', spellcheck: 'false', autocomplete: 'off',
-    oninput: (e) => { st.id = e.target.value.trim(); touch(); } }) : null;
+    oninput: (e) => { st.id = e.target.value.trim(); touch(); }, 'aria-label': '보드 ID' }) : null;
   const titleIn = el('input', { type: 'text', value: dash.title || '', maxlength: String(MAX_TITLE), placeholder: '보드 제목',
-    oninput: (e) => { dash.title = e.target.value; touch(); } });
+    oninput: (e) => { dash.title = e.target.value; touch(); }, 'aria-label': '보드 제목' });
   const descIn = el('input', { type: 'text', value: dash.desc || '', placeholder: '설명',
-    oninput: (e) => { setStr(dash, 'desc', e.target.value); touch(); } });
+    oninput: (e) => { setStr(dash, 'desc', e.target.value); touch(); }, 'aria-label': '보드 설명' });
   const rangeSel = sel(RANGES, dash.range || '1h', (v) => { dash.range = v; touch(); });
   const groupSel = sel([['', '전체'], ...refs.groups.map((g) => [g, g])], dash.group || '', (v) => { setStr(dash, 'group', v); touch(); });
   const meta = el('div', { class: 'de-meta' },
@@ -608,7 +607,7 @@ function mount(page, st, refs, ctx) {
 
     if (f.has('ref')) {
       sec('값');
-      kids.push(el('div', { class: 'de-seg', role: 'group', 'aria-label': '값 출처' },
+      kids.push(el('div', { class: 'seg de-seg', role: 'group', 'aria-label': '값 출처' },
         segBtn('지표', !refMode, () => {
           if (!w.ref) return;
           delete w.ref;
@@ -830,8 +829,8 @@ function mount(page, st, refs, ctx) {
   }
 
   // ---- 지표 고르기 ----
-  let modal = null;
-  const closeModal = () => { if (modal) { modal.remove(); modal = null; } };
+  let modal = null, relModal = null;
+  const closeModal = () => { if (modal) { modal.remove(); modal = null; if (relModal) { relModal(); relModal = null; } } };
   cleanups.push(closeModal);
   function openPicker(w, q) {
     pickMetric(q.metric).then((v) => {
@@ -881,15 +880,15 @@ function mount(page, st, refs, ctx) {
         if (e.key === 'ArrowDown' && b.nextElementSibling) { e.preventDefault(); b.nextElementSibling.focus(); }
         if (e.key === 'ArrowUp') { e.preventDefault(); (b.previousElementSibling || search).focus(); }
       });
-      const bg = el('div', { class: 'modal-bg de-mbg', onclick: (e) => { if (e.target === bg) done(null); },
-        onkeydown: (e) => { if (e.key === 'Escape') { e.stopPropagation(); done(null); } } },
-        el('div', { class: 'modal de-pick', role: 'dialog', 'aria-label': '지표 고르기' },
+      const bg = el('div', { class: 'modal-bg de-mbg', onclick: (e) => { if (e.target === bg) done(null); } },
+        el('div', { class: 'modal de-pick', role: 'dialog', 'aria-modal': 'true', 'aria-label': '지표 고르기' },
           el('div', { class: 'de-sh' }, el('b', { text: '지표 고르기' }), count, el('span', { class: 'de-grow' }),
             el('button', { type: 'button', class: 'de-x', title: '닫기', text: '✕', onclick: () => done(null) })),
           el('div', { class: 'de-msearch' }, search, el('label', { class: 'de-chk' }, liveOnly, '수집 중만')),
           list));
       modal = bg;
       document.body.append(bg);
+      relModal = trapFocus(bg, { onEscape: () => done(null) });
       search.focus();
       loadMetrics().then((ms) => {
         all = ms;
@@ -903,10 +902,11 @@ function mount(page, st, refs, ctx) {
   }
 
   // ---- + 위젯 ----
-  let menu = null;
+  let menu = null, relMenu = null;
   const closeMenu = () => {
     if (!menu) return;
     menu.remove(); menu = null;
+    if (relMenu) { relMenu(); relMenu = null; }
     document.removeEventListener('mousedown', outside, true);
   };
   const outside = (e) => { if (menu && !menu.contains(e.target)) closeMenu(); };
@@ -914,11 +914,11 @@ function mount(page, st, refs, ctx) {
   function openAddMenu(anchor) {
     if (menu) { closeMenu(); return; }
     const groups = Object.keys(KIND_TEXT).map((k) => [k, TYPE_ORDER.filter((t) => WIDGETS[t] && WIDGETS[t].kind === k)]).filter(([, ts]) => ts.length);
-    menu = el('div', { class: 'de-menu', role: 'menu', 'aria-label': '위젯 종류',
-      onkeydown: (e) => { if (e.key === 'Escape') { closeMenu(); anchor.focus(); } } },
+    menu = el('div', { class: 'de-menu', role: 'menu', 'aria-label': '위젯 종류' },
     groups.map(([k, ts]) => el('div', { class: 'de-mg' }, el('div', { class: 'de-mh', text: KIND_TEXT[k] }),
       ts.map((t) => el('button', { type: 'button', role: 'menuitem', text: WIDGETS[t].title, onclick: () => { closeMenu(); addWidget(t); } })))));
     document.body.append(menu);
+    relMenu = trapFocus(menu, { onEscape: closeMenu });
     const r = anchor.getBoundingClientRect(), mw = menu.offsetWidth, mh = menu.offsetHeight;
     menu.style.left = `${Math.max(8, Math.min(r.right - mw, innerWidth - mw - 8))}px`;
     menu.style.top = `${r.bottom + mh + 8 > innerHeight ? Math.max(8, r.top - mh - 4) : r.bottom + 4}px`;
@@ -972,7 +972,7 @@ function mount(page, st, refs, ctx) {
     aiBtn.title = a.available ? `LLM ${a.provider || ''}`.trim() : 'LLM 연동 전 — 프롬프트 복사 · 답 붙여넣기';
     return a;
   });
-  let aiModal = null, aiSeq = 0, aiTick = null;
+  let aiModal = null, aiSeq = 0, aiTick = null, relAi = null;
   function closeAssist() {
     aiSeq++; // 기다리던 응답은 버린다(api에 끊기가 없어 결과를 무시한다)
     clearInterval(aiTick);
@@ -980,6 +980,7 @@ function mount(page, st, refs, ctx) {
     if (!aiModal) return;
     aiModal.remove();
     aiModal = null;
+    if (relAi) { relAi(); relAi = null; }
     if (alive) aiBtn.focus();
   }
   cleanups.push(closeAssist);
@@ -1093,8 +1094,7 @@ function mount(page, st, refs, ctx) {
       }
     }
 
-    const bg = el('div', { class: 'modal-bg de-mbg', onclick: (e) => { if (e.target === bg) closeAssist(); },
-      onkeydown: (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeAssist(); } } },
+    const bg = el('div', { class: 'modal-bg de-mbg', onclick: (e) => { if (e.target === bg) closeAssist(); } },
       el('div', { class: 'modal ed-modal de-ai', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'AI 초안' },
         el('div', { class: 'de-sh' }, el('b', { text: 'AI 초안' }),
           info(fix ? '지금 정의를 바탕으로 고친 정의 전체를 받습니다. 저장은 미리보기로 검토한 뒤에' : '문장으로 쓰면 보드 정의 초안을 채웁니다. 저장은 미리보기로 검토한 뒤에')),
@@ -1105,6 +1105,7 @@ function mount(page, st, refs, ctx) {
     ta.value = ui.aiText;
     drawMode();
     document.body.append(bg);
+    relAi = trapFocus(bg, { onEscape: closeAssist });
     ta.focus();
     if (!ui.assist) assistP.then(() => { if (aiModal === bg) drawMode(); });
   }
@@ -1214,7 +1215,7 @@ function mount(page, st, refs, ctx) {
     location.hash = st.isNew ? '#dashes' : viewHref(st.id);
   }
   async function del() {
-    const r = await confirmBox({ title: '보드 삭제', message: `${dash.title || st.id} (${st.id})`, okText: '삭제' });
+    const r = await confirmBox({ title: '보드 삭제', message: `${dash.title || st.id} (${st.id})`, okText: '삭제', danger: true });
     if (!r.ok || !alive) return;
     showMsg('');
     try {
@@ -1232,28 +1233,18 @@ function mount(page, st, refs, ctx) {
     }
   }
 
-  // ---- 나가기 확인: 창 닫기 · 화면 안 링크 ----
-  const onBefore = (e) => { if (ui.dirty) { e.preventDefault(); e.returnValue = ''; } };
-  const onLink = async (e) => {
-    if (!ui.dirty || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    const a = e.target.closest && e.target.closest('a[href^="#"]');
-    if (!a || stage.contains(a)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    if ((await confirmBox({ title: '나가기', message: UNSAVED, okText: '나가기' })).ok && alive) {
-      ui.dirty = false;
-      location.hash = a.getAttribute('href');
-    }
-  };
+  // ---- 나가기 확인: 창 닫기 · 화면 안 링크(편집기 안의 링크는 제외) ----
+  const offGuard = leaveGuard(() => ui.dirty, UNSAVED);
+  // 미리보기 틀 안의 링크는 어차피 막혀 있다: leaveGuard가 묻지 않게 먼저 눌림을 접는다
+  const stageLink = (e) => { if (stage.contains(e.target)) e.preventDefault(); };
+  window.addEventListener('click', stageLink, true);
   const onKey = (e) => {
     if (e.key === 'Escape' && !modal && !aiModal && !menu && ui.sel && !e.target.closest('input, textarea, select, .modal-bg')) select(null);
   };
-  window.addEventListener('beforeunload', onBefore);
-  document.addEventListener('click', onLink, true);
   document.addEventListener('keydown', onKey);
   cleanups.push(() => {
-    window.removeEventListener('beforeunload', onBefore);
-    document.removeEventListener('click', onLink, true);
+    offGuard();
+    window.removeEventListener('click', stageLink, true);
     document.removeEventListener('keydown', onKey);
   });
 

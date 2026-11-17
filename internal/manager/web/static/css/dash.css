@@ -5,17 +5,17 @@
 /* 틀: 머리 + 몸통 세로 flex. 몸통(.dw-b)은 남은 높이를 다 가진다(위젯 뿌리가 height:100%로 채우고 안에서 스크롤).
    몸통·틀은 넘침을 자르지 않는다(시계열 말풍선이 한 줄 칸 밖으로 나올 수 있게). 올린 틀은 이웃 위로 */
 section.dw { position:relative; display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--surface);
-  border:1px solid var(--line); border-radius:6px; padding:8px 12px 10px; }
+  border:1px solid var(--line); border-radius:var(--r-md); padding:8px 12px 10px; }
 section.dw:hover, section.dw:focus-within { z-index:2; }
 /* batch.css의 전역 .dw-h(플로우 상세 머리)를 덮는다 */
 section.dw > .dw-h { display:flex; align-items:center; gap:8px; flex:none; min-width:0; height:18px; margin:0 0 6px; padding:0;
-  font-size:13px; line-height:18px; font-weight:600; color:var(--t2); text-transform:none; }
+  font-size:var(--fs-md); line-height:18px; font-weight:600; color:var(--t2); text-transform:none; }
 section.dw > .dw-h .dw-t { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 section.dw > .dw-b { position:relative; flex:1 1 0; min-height:0; min-width:0; }
-.dw-lv { flex:none; font-size:12px; font-weight:600; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.dw-lv { flex:none; font-size:var(--fs-sm); font-weight:600; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .dw-lv.warn { color:var(--warn); } .dw-lv.crit { color:var(--crit); }
 .dw-wait { display:flex; align-items:center; justify-content:center; height:100%; color:var(--t3); }
-.dw-err, .dw-msg { margin:0; height:100%; overflow:auto; font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.dw-err, .dw-msg { margin:0; height:100%; overflow:auto; font-size:var(--fs-sm); line-height:1.5; overflow-wrap:anywhere; }
 .dw-err { color:var(--warn); }
 .dw-msg { color:var(--t3); }
 
@@ -28,19 +28,19 @@ section.dw > .dw-b { position:relative; flex:1 1 0; min-height:0; min-width:0; }
 }
 
 /* ---- 보드 공통: 편집 꺼짐 표시 · 빈 상태 ---- */
-.ds-off { font-size:12px; color:var(--t3); border:1px solid var(--line); border-radius:10px; padding:0 8px; cursor:help; white-space:nowrap; }
-a.ds-edit { color:var(--accent); text-decoration:none; font-size:13px; }
+.ds-off { font-size:var(--fs-sm); color:var(--t3); border:1px solid var(--line); border-radius:10px; padding:0 8px; cursor:help; white-space:nowrap; }
+a.ds-edit { color:var(--accent); text-decoration:none; font-size:var(--fs-md); }
 a.ds-edit:hover { text-decoration:underline; }
 .ds-empty { display:flex; flex-direction:column; align-items:center; gap:10px; padding:48px 0; }
 .ds-empty .empty { margin:0; font-size:15px; }
 /* 새 보드: 템플릿 고르기(서랍) */
 .ds-tpls { display:flex; flex-direction:column; gap:8px; }
-.ds-tpl { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; padding:8px 10px; border:1px solid var(--line); border-radius:6px;
+.ds-tpl { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; padding:8px 10px; border:1px solid var(--line); border-radius:var(--r-md);
   background:var(--surface); color:var(--t1); text-decoration:none; }
 .ds-tpl:hover { border-color:var(--accent); }
 .ds-tpl:hover b { color:var(--accent); }
-.ds-tpl .ds-tn { font-size:12px; color:var(--t3); white-space:nowrap; }
-.ds-tpl .ds-td { grid-column:1 / -1; font-size:12px; color:var(--t2); }
+.ds-tpl .ds-tn { font-size:var(--fs-sm); color:var(--t3); white-space:nowrap; }
+.ds-tpl .ds-td { grid-column:1 / -1; font-size:var(--fs-sm); color:var(--t2); }
 
 /* ---- #dash/<id> 머리: 고르기 칸(벽면이면 제목) · 설명 ⓘ · ⚠ 읽지 못한 파일 · 구간 · 편집 · 벽면 ---- */
 .dv-head { display:flex; align-items:center; gap:8px 12px; flex-wrap:wrap; margin-bottom:12px; }
@@ -51,7 +51,7 @@ a.ds-edit:hover { text-decoration:underline; }
 .dv-pick option { font-weight:400; }
 .dv-tip:empty { display:none; }
 .dv-tip .tipbox { white-space:pre-line; }
-.dv-errs { font-size:13px; font-weight:600; color:var(--warn); white-space:nowrap; }
+.dv-errs { font-size:var(--fs-md); font-weight:600; color:var(--warn); white-space:nowrap; }
 .dv-errs .tipbox { width:max-content; max-width:min(440px, 80vw); font-weight:400; white-space:normal; }
 .dv-errs .tipbox ul { margin:4px 0; padding-left:16px; color:var(--t2); }
 .dv-errs .tipbox code { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--t1); }
@@ -60,12 +60,12 @@ a.ds-edit:hover { text-decoration:underline; }
 .dv-head .dv-range { margin:0 0 0 auto; flex-wrap:wrap; }
 .dv-range .trlabel { margin-left:0; }
 .dv-range .tip .tipbox { left:auto; right:0; }
-.dv-now { padding:1px 8px; font-size:12px; }
+.dv-now { padding:1px 8px; font-size:var(--fs-sm); }
 .dv-act { display:flex; align-items:center; gap:6px; }
 .dv-none { display:flex; flex-direction:column; align-items:center; gap:8px; padding:48px 0; }
 .dv-none .empty { margin:0; font-size:15px; }
-.dv-none .dv-why { margin:0; max-width:640px; font-size:13px; color:var(--t2); text-align:center; overflow-wrap:anywhere; }
-.dv-none a { color:var(--accent); text-decoration:none; font-size:13px; }
+.dv-none .dv-why { margin:0; max-width:640px; font-size:var(--fs-md); color:var(--t2); text-align:center; overflow-wrap:anywhere; }
+.dv-none a { color:var(--accent); text-decoration:none; font-size:var(--fs-md); }
 .dv-none a:hover { text-decoration:underline; }
 @media (max-width:600px) {
   .dv-head .dv-range { margin-left:0; }
@@ -73,22 +73,35 @@ a.ds-edit:hover { text-decoration:underline; }
   .dv-pick { flex:1 1 auto; }
 }
 
-/* ---- 벽면(?tv=1): 위 막대·트리 숨김, 글자 키움, 오른쪽 위 ✕ ---- */
+/* ---- 벽면(?tv=1): 위 막대·트리 숨김, 글자 키움, 오른쪽 위 ✕. 글자·줄 높이는 창 폭(vw)에 비례(1920에서 본문 18·큰 숫자 44·머리 20px 이상, 3840에서 두 배) ---- */
+body[data-tv] { --tv-b:clamp(18px, .94vw, 80px); --tv-big:clamp(44px, 2.3vw, 190px); --tv-h:clamp(20px, 1.05vw, 90px); }
 body[data-tv] #top, body[data-tv] #tree { display:none; }
 body[data-tv] #page { padding:12px 16px; }
 body[data-tv] .dv-head { margin-bottom:10px; padding-right:36px; }
 body[data-tv] .dv-head .trseg, body[data-tv] .dv-act, body[data-tv] .dv-range .tip { display:none; }
-body[data-tv] .dv-t { font-size:20px; }
-body[data-tv] .trlabel { font-size:14px; }
-body[data-tv] .dboard { --dw-row:124px; gap:14px; }
-body[data-tv] section.dw > .dw-h { height:22px; font-size:16px; line-height:22px; }
-body[data-tv] .dw-lv { font-size:14px; }
-body[data-tv] .dw-b .mw { font-size:15px; }
-body[data-tv] .dw-b .mw-bars, body[data-tv] .dw-b .mw-tb, body[data-tv] .dw-b .mw-th, body[data-tv] .dw-b .dwg-lr, body[data-tv] .dw-b .dwg-sr { font-size:14px; }
-body[data-tv] .dw-b .mw-bars { line-height:20px; }
-body[data-tv] .dw-b .wrow, body[data-tv] .dw-b .kpi, body[data-tv] .dw-b .dc-side { font-size:15px; }
-body[data-tv] .dw-b .we, body[data-tv] .dw-b .wa, body[data-tv] .dw-b .dc-list, body[data-tv] .dw-b .fac, body[data-tv] .dw-b .facs .rk-item,
-body[data-tv] .dw-b .gl, body[data-tv] .dw-b .gn, body[data-tv] .dw-b .tl-sum, body[data-tv] .dw-b .wok { font-size:13px; }
-.dv-tvx { position:fixed; top:8px; right:10px; z-index:30; width:28px; height:28px; padding:0; border-radius:14px; font-size:14px; line-height:1;
+body[data-tv] .dv-t { font-size:var(--tv-h); }
+body[data-tv] .trlabel { font-size:var(--tv-b); }
+body[data-tv] .dboard { --dw-row:clamp(124px, 6.45vw, 520px); gap:clamp(14px, .73vw, 60px); }
+body[data-tv] section.dw > .dw-h { height:calc(var(--tv-h) * 1.3); font-size:var(--tv-h); line-height:calc(var(--tv-h) * 1.3); }
+body[data-tv] .dw-lv, body[data-tv] .dw-stl { font-size:var(--tv-b); }
+body[data-tv] .dw-b, body[data-tv] .dw-b .mw, body[data-tv] .dw-b .mw-bars, body[data-tv] .dw-b .mw-tb, body[data-tv] .dw-b .mw-th, body[data-tv] .dw-b .mw-sub,
+body[data-tv] .dw-b .mw-sv .unit, body[data-tv] .dw-b .dwg-lr, body[data-tv] .dw-b .dwg-sr, body[data-tv] .dw-b .dwg-foot, body[data-tv] .dw-b .dwg-more,
+body[data-tv] .dw-b .wrow, body[data-tv] .dw-b .kpi, body[data-tv] .dw-b .dc-side, body[data-tv] .dw-b .fit-more,
+body[data-tv] .dw-b .we, body[data-tv] .dw-b .wa, body[data-tv] .dw-b .dc-list, body[data-tv] .dw-b .facs .rk-item,
+body[data-tv] .dw-b .gl, body[data-tv] .dw-b .gn, body[data-tv] .dw-b .tl-sum, body[data-tv] .dw-b .wok { font-size:var(--tv-b); }
+body[data-tv] .dw-b .mw-bars { line-height:1.4; grid-auto-rows:minmax(calc(var(--tv-b) * 1.5), auto); }
+body[data-tv] .dw-b .mw-big { font-size:clamp(var(--tv-big), 15cqw, calc(var(--tv-big) * 1.6)); }
+body[data-tv] .dw-b .mw-stat[data-h="1"] .mw-big { font-size:var(--tv-big); }
+body[data-tv] .dw-b .mw-stat .mw-big.txt { font-size:var(--tv-b); }
+body[data-tv] .dw-b .mw-tb th, body[data-tv] .dw-b .mw-tb td { padding:.2em .5em; }
+.dv-tvx { position:fixed; top:8px; right:10px; z-index:var(--z-tip); width:28px; height:28px; padding:0; border-radius:14px; font-size:14px; line-height:1;
   color:var(--t3); background:var(--surface); opacity:.6; }
 .dv-tvx:hover, .dv-tvx:focus-visible { opacity:1; color:var(--t1); }
+
+/* 위젯 하나만 값을 못 가져옴: 머리에 흐린 마지막 성공 시각 */
+.dw-stl { flex:none; font-size:var(--fs-xs); color:var(--t3); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.dw-stl[hidden] { display:none; }
+/* 편집 중 위젯 고르기(키보드): 윤곽선은 전역 :focus-visible */
+section.dw.editing:focus-visible { outline-offset:2px; }
+body[data-tv] .dwg-sr { grid-template-columns:minmax(max-content,auto) minmax(0,1fr) minmax(0,1fr) auto auto auto; column-gap:calc(var(--tv-b) * .6); }
+body[data-tv] .dwg-sr .dwg-rss { display:block; }

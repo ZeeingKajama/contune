@@ -2,7 +2,7 @@
 // 왼쪽 범위 트리 → 오른쪽 위 출처 표 → 오른쪽 아래 서버별 적용 상태 → 변경 이력(접어 둠).
 // 무엇을 수집할지는 여기서 정하고, 접속 정보·읽어도 되는 경로는 서버 YAML에 남는다(05 §17).
 import { api, poll, ApiError } from '../api.js';
-import { el, relTime, toast, confirmBox, table, DASH } from '../ui.js';
+import { el, relTime, toast, confirmBox, table, act, stateBox, setQuery, setTitle, fmtDT, DASH } from '../ui.js';
 import { can, gate } from '../auth.js';
 import { hashWith } from '../tree.js';
 import { openWizard, watchApplied, scopeName, scopeCovers, viewScope, ruleChipText, pathDir, metricTip } from './collectwiz.js';
@@ -116,15 +116,17 @@ function afterSave(scope, host, reload) {
   toast('저장했습니다. 서버에 반영하는 중…');
   reload();
   if (host) watchApplied(host, (s) => {
-    toast(s === 'applied' ? `${host}: 적용됨` : s === 'partial' ? `${host}: 일부만 적용됨 — 서버 탭의 '문제' 칸에서 고치세요` : s === 'timeout' ? `${host}: 30초 안에 적용되지 않았습니다` : `${host}: ${STATE_TEXT[s] || s}`);
+    if (s === 'applied') toast(`${host}: 적용됨`, { level: 'ok' });
+    else {
+      // 문제는 사라지지 않게 머물고, 고칠 칸으로 바로 가는 링크를 단다
+      const msg = s === 'partial' ? `${host}: 일부만 적용됨 — 건너뛴 로그 파일이 있습니다` : s === 'timeout' ? `${host}: 30초 안에 적용되지 않았습니다` : `${host}: ${STATE_TEXT[s] || s}`;
+      toast(msg, { level: 'error', action: { text: '문제 칸 보기', href: `#host/${encodeURIComponent(host)}/collect` } });
+    }
     reload();
   });
 }
 const AUDIT_TEXT = { 'collect.save': '변경', 'collect.delete': '삭제', 'collect.reload': '다시 읽음' };
-const fmtAt = (ts) => {
-  const d = new Date(ts); const p = (n) => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-};
+const fmtAt = (ts) => fmtDT(ts);
 
 // ---- 화면 ----
 
@@ -135,6 +137,7 @@ export async function render(root, params, query) {
   dispose();
   root.classList.add('cl');
   const scope = (query && query.s) || 'all';
+  setTitle('로그 수집');
   root.replaceChildren(el('h2', { class: 'sec', text: '로그 수집' }));
   const head = el('div', { class: 'cl-head' });
   const notes = el('div', { class: 'cl-notes' });
@@ -144,7 +147,7 @@ export async function render(root, params, query) {
   const histBox = el('details', { class: 'cl-hist' });
   root.append(head, notes, el('div', { class: 'cl-grid' }, treeBox, el('div', { class: 'cl-main' }, srcBox, stBox, histBox)));
 
-  let data = null, sig = '', onlyBad = false;
+  let data = null, sig = '', onlyBad = !!(query && query.bad);
   const load = async () => {
     data = await api('/collect');
     const s = JSON.stringify([data.sets, data.errors, data.editable, (data.hosts || []).map((h) => [h.host, h.group])]);
@@ -155,9 +158,11 @@ export async function render(root, params, query) {
   function drawHead() {
     head.replaceChildren(el('span', { class: 'meta', text: `설정 폴더 ${data.dir || DASH} · 적용 대상 ${data.sets.length}개 · 서버 ${data.hosts.length}대` }),
       el('span', { class: 'grow' }),
-      el('button', { type: 'button', class: 'ghost', text: '폴더 다시 읽기', title: '손으로 고친 파일을 반영합니다', onclick: async () => {
-        try { const r = await api('/collect/reload', { method: 'POST' }); toast(`다시 읽음: 적용 대상 ${r.sets}개, 읽지 못한 파일 ${(r.errors || []).length}개`); sig = ''; load(); } catch (e) { /* 알림은 api가 한다 */ }
-      } }));
+      el('button', { type: 'button', class: 'ghost', text: '폴더 다시 읽기', title: '손으로 고친 파일을 반영합니다', onclick: (ev) => act(ev.currentTarget, async () => {
+        const r = await api('/collect/reload', { method: 'POST' });
+        toast(`다시 읽음: 적용 대상 ${r.sets}개, 읽지 못한 파일 ${(r.errors || []).length}개`, { level: 'ok' });
+        sig = ''; load();
+      }, { fail: '폴더를 다시 읽지 못함' }) }));
     gate(head.lastChild, 'admin');
     const n = [];
     if (!data.editable) n.push(el('div', { class: 'cl-note lock', role: 'status' }, '편집이 꺼져 있어 조회만 됩니다. 매니저 설정 ', el('code', { text: 'collect.enabled: true' }), ' 로 켜면 저장할 수 있습니다.'));
@@ -212,7 +217,7 @@ export async function render(root, params, query) {
         { key: 'scope', label: '정한 곳', render: (r) => (r.own ? (r.overrides ? el('span', { class: 'badge warn', text: '덮어씀', title: '더 넓은 적용 대상의 같은 이름 로그 파일을 여기서 바꿈' }) : el('span', { class: 'meta', text: '여기' })) : el('span', { class: 'meta', text: `${scopeName(r.scope)}에서 받음` })) },
         { key: 'x', label: '', render: (r) => (r.own ? el('span', { class: 'cl-act' },
           lock(el('button', { type: 'button', text: '편집', onclick: () => openAdd({ scope, source: { name: r.name, path: r.path, match: r.match, metrics: r.metrics } }) })),
-          lock(el('button', { type: 'button', class: 'ghost', text: '삭제', onclick: () => del(set, r) }))) : '') },
+          lock(el('button', { type: 'button', class: 'ghost', text: '삭제', onclick: (ev) => del(set, r, ev.currentTarget) }))) : '') },
       ],
     });
     t.querySelectorAll('tbody tr').forEach((tr, i) => { if (rows[i] && !rows[i].own) tr.classList.add('inh'); });
@@ -220,19 +225,24 @@ export async function render(root, params, query) {
     if (!hostsOfScope().length) { add.disabled = true; add.title = '이 적용 대상에 걸린 서버가 없어 파일을 찾을 수 없습니다'; }
     srcBox.replaceChildren(
       el('h3', { class: 'sec' }, `로그 파일 · ${scopeName(scope)} `, el('span', { class: 'meta', text: set ? `${set.file} · 여기서 정한 로그 파일 ${set.logs.length}개` : '이 적용 대상의 설정 파일이 아직 없습니다' })),
-      t, el('div', { class: 'cl-addrow' }, add));
+      el('div', { class: 'tblwrap' }, t), el('div', { class: 'cl-addrow' }, add));
   }
-  async function del(set, r) {
+  async function del(set, r, btn) {
     if (!set) return;
     const n = hostsOfScope().length;
-    const { ok } = await confirmBox({ title: `로그 파일 '${r.name}' 삭제`, message: `${scopeName(scope)} 설정에서 지웁니다. 서버 ${n}대가 이 로그 파일을 더 이상 수집하지 않습니다.`, okText: '삭제' });
+    const { ok } = await confirmBox({ title: `로그 파일 '${r.name}' 삭제`, message: `${scopeName(scope)} 설정에서 지웁니다. 서버 ${n}대가 이 로그 파일을 더 이상 수집하지 않습니다.`, okText: '삭제', danger: true });
     if (!ok) return;
-    try {
-      await saveLogs(set, set.logs.filter((l) => l.name !== r.name));
-      toast('삭제했습니다');
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) toast('다른 곳에서 먼저 고쳤습니다. 최신 내용으로 다시 읽었으니 확인하고 다시 해 주세요', 5000);
-    }
+    let done = true;
+    await act(btn, async () => {
+      try {
+        await saveLogs(set, set.logs.filter((l) => l.name !== r.name));
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 409)) throw e;
+        done = false;
+        toast('다른 곳에서 먼저 고쳤습니다. 최신 내용으로 다시 읽었으니 확인하고 다시 해 주세요', { level: 'error' });
+      }
+    }, { fail: '삭제하지 못함' });
+    if (done) toast('삭제했습니다', { level: 'ok' });
     sig = ''; load();
   }
 
@@ -242,7 +252,7 @@ export async function render(root, params, query) {
     const cs = countStates(all);
     const rows = onlyBad ? all.filter((h) => h.state !== 'applied') : all;
     const sum = Object.keys(STATE_TEXT).filter((k) => cs[k]).map((k) => el('span', { class: 'cl-sum' }, stateBadge(k), ` ${cs[k]}`));
-    const chk = el('label', { class: 'cl-only' }, el('input', { type: 'checkbox', checked: onlyBad, onchange: (e) => { onlyBad = e.target.checked; drawStatus(); } }), ' 이상만 보기');
+    const chk = el('label', { class: 'cl-only' }, el('input', { type: 'checkbox', checked: onlyBad, onchange: (e) => { onlyBad = e.target.checked; setQuery({ bad: onlyBad ? '1' : '' }); drawStatus(); } }), ' 이상만 보기');
     const t = table({
       empty: all.length ? '모두 적용됨' : '이 적용 대상에 걸린 서버가 없습니다', rows,
       onRow: (h) => { location.hash = `#host/${encodeURIComponent(h.host)}/collect`; },
@@ -256,7 +266,7 @@ export async function render(root, params, query) {
       ],
     });
     stBox.replaceChildren(el('h3', { class: 'sec' }, `적용 상태 · ${scopeName(scope)} `, el('span', { class: 'meta', text: `서버 ${all.length}대` })),
-      el('div', { class: 'cl-sums' }, sum, el('span', { class: 'grow' }), chk), t);
+      el('div', { class: 'cl-sums' }, sum, el('span', { class: 'grow' }), chk), el('div', { class: 'tblwrap' }, t));
   }
 
   function drawHist() {
@@ -283,20 +293,29 @@ export async function render(root, params, query) {
   }
 
   function drawAll() { drawHead(); drawTree(); drawSources(); drawStatus(); drawHist(); }
-  await load();
+  try { await load(); } catch (e) {
+    root.replaceChildren(el('h2', { class: 'sec', text: '로그 수집' }),
+      stateBox('error', { text: '로그 수집 설정을 불러오지 못함', e, detail: '매니저가 응답하면 다시 시도로 풀립니다.', retry: () => render(root, params, query) }));
+    return;
+  }
   disposers.push(poll(load, 5000));
 }
 
 // ---- 서버 상세 "수집" 탭 ----
 
 export function drawHostCollect(body, hostId) {
-  body.replaceChildren(el('div', { class: 'empty', text: '불러오는 중…' }));
-  let alive = true;
+  body.replaceChildren(stateBox('loading'));
+  let alive = true, drawn = false;
+  const showErr = (e) => {
+    // 한 번도 못 그렸을 때만 실패 칸으로 바꾼다(이미 그렸으면 마지막 값을 둔다. 끊김은 위 막대가 알린다)
+    if (alive && !drawn) body.replaceChildren(stateBox('error', { text: '수집 상태를 불러오지 못함', e, retry: () => { body.replaceChildren(stateBox('loading')); reload(); } }));
+  };
+  const fetchBoth = () => Promise.all([api(`/collect/hosts/${encodeURIComponent(hostId)}`), api('/collect')]);
   const stop = poll(async () => {
-    const [d, all] = await Promise.all([api(`/collect/hosts/${encodeURIComponent(hostId)}`), api('/collect')]);
-    if (alive) draw(d, all);
-  }, 5000);
-  const reload = () => { alive && Promise.all([api(`/collect/hosts/${encodeURIComponent(hostId)}`), api('/collect')]).then(([d, a]) => alive && draw(d, a)).catch(() => {}); };
+    const [d, all] = await fetchBoth();
+    if (alive) { drawn = true; draw(d, all); }
+  }, 5000, { onError: showErr });
+  const reload = () => { alive && fetchBoth().then(([d, a]) => { if (alive) { drawn = true; draw(d, a); } }).catch(showErr); };
 
   let fixOpen = false;
   function band(d, nSkipped) {

@@ -1,6 +1,7 @@
 // 시간 구간 막대. 주소의 ?range= 또는 ?from=&to=와 양방향.
 // 모양: [최근 | 15분 1시간 6시간 24시간 7일] [직접 지정] … ● 실시간 · 11/10(화) 11:35 ~ 11:50
 import { el } from './ui.js';
+import { onPollState, pollState } from './api.js';
 import { fmtSpan } from './chart.js';
 
 export const RANGES = [
@@ -37,25 +38,26 @@ export function createTimeRange(host, opts = {}) {
   let state = resolveRange(readQuery(), Date.now(), def);
   const bar = el('div', { class: 'trange' });
   host.append(bar);
-  const fromIn = el('input', { type: 'datetime-local' }), toIn = el('input', { type: 'datetime-local' });
+  const fromIn = el('input', { type: 'datetime-local', 'aria-label': '시작' }), toIn = el('input', { type: 'datetime-local', 'aria-label': '끝' });
   const toLocal = (ms) => { const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
   const label = el('span', { class: 'trlabel' });
+  let cut = false; // 갱신 끊김(api.js poll 상태). 실시간 표시를 '갱신 끊김'으로 바꾼다
   function paintLabel() {
     const c = current();
     // replaceChildren은 null을 글자 "null"로 넣으므로 빼고 넘긴다
     label.replaceChildren(...[
-      c.live ? el('span', { class: 'trlive', text: '● 실시간' }) : null,
+      c.live ? (cut ? el('span', { class: 'trlive cut', text: '○ 갱신 끊김' }) : el('span', { class: 'trlive', text: '● 실시간' })) : null,
       el('span', { class: 'num', text: fmtSpan(c.from, c.to) })].filter(Boolean));
   }
   function draw() {
-    const seg = el('span', { class: 'trseg', role: 'group', 'aria-label': '최근 구간' },
+    const seg = el('span', { class: 'seg trseg', role: 'group', 'aria-label': '최근 구간' },
       el('span', { class: 'trpre', text: '최근' }),
       ...RANGES.map(([id, text]) => el('button', {
         type: 'button', class: state.live && state.range === id ? 'on' : '', text,
         'aria-pressed': state.live && state.range === id ? 'true' : 'false',
         onclick: () => setRange(id),
       })));
-    const custom = el('button', { type: 'button', class: 'trcustom' + (state.range === 'custom' ? ' on' : ''), text: '직접 지정', onclick: () => {
+    const custom = el('button', { type: 'button', class: 'trcustom' + (state.range === 'custom' ? ' on' : ''), 'aria-pressed': state.range === 'custom' ? 'true' : 'false', text: '직접 지정', onclick: () => {
       const now = Date.now();
       fromIn.value = toLocal(state.from || now - 3600e3); toIn.value = toLocal(state.to || now);
       box.hidden = !box.hidden;
@@ -85,7 +87,9 @@ export function createTimeRange(host, opts = {}) {
     return { from: state.from, to: state.to, live: false, range: state.range };
   }
   draw();
+  const offPoll = onPollState((s) => { if (!bar.isConnected) { offPoll(); return; } if (cut !== !!s.failing) { cut = !!s.failing; paintLabel(); } });
+  cut = !!pollState().failing; paintLabel();
   // 화면이 바뀌어 막대가 빠지면 스스로 멈춘다(destroy를 부르지 않는 화면도 있다).
-  const tick = setInterval(() => { if (!bar.isConnected) clearInterval(tick); else if (state.live) paintLabel(); }, 10000);
-  return { onChange: (fn) => listeners.push(fn), current, select, destroy() { clearInterval(tick); bar.remove(); listeners.length = 0; } };
+  const tick = setInterval(() => { if (!bar.isConnected) { clearInterval(tick); offPoll(); } else if (state.live) paintLabel(); }, 10000);
+  return { onChange: (fn) => listeners.push(fn), current, select, destroy() { clearInterval(tick); offPoll(); bar.remove(); listeners.length = 0; } };
 }

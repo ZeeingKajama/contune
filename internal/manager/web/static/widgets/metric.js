@@ -320,14 +320,11 @@ export function table(w, ctx) {
     if (!rows.length) { root.replaceChildren(none()); return; }
     const cols = d.cols && d.cols.length ? d.cols : (rows[0].values || []).map(() => ({}));
     const by = byOf(w);
-    // 칸 단위: 위젯 unit > 칸 지표 단위 > (첫 칸만) 응답 단위. 칸마다 그 칸의 가장 큰 값으로 환산
-    const scs = cols.map((col, j) => {
-      const u = w.unit || col.unit || (j === 0 ? d.unit || '' : '');
-      return unitScale(u, Math.max(0, ...rows.map((r) => Math.abs(num(r.values && r.values[j]) ?? 0))));
-    });
-    const th = cols.map((col, j) => {
+    // 칸 단위: 위젯 unit > 칸 지표 단위 > (첫 칸만) 응답 단위. 값마다 맞는 단위로 쓰고(56.7MB · 1.2GB) 단위는 값 옆에 작게
+    const us = cols.map((col, j) => w.unit || col.unit || (j === 0 ? d.unit || '' : ''));
+    const th = cols.map((col) => {
       const name = col.label || col.metric || '';
-      return el('th', { class: 'num', title: name + (scs[j].unit ? ` (${scs[j].unit})` : '') }, el('span', { class: 'mw-cl', text: name }), unitEl(scs[j].unit));
+      return el('th', { class: 'num', title: name }, el('span', { class: 'mw-cl', text: name }));
     });
     const head = el('thead', {}, el('tr', {}, el('th', { class: 'n', text: by === 'host' ? '서버' : by === 'owner' ? '주인' : '' }), th));
     const body = el('tbody', {}, rows.map((r) => el('tr', {},
@@ -335,7 +332,8 @@ export function table(w, ctx) {
       cols.map((col, j) => {
         const v = num(r.values && r.values[j]);
         const st = stateOf(r.states && r.states[j], v);
-        return el('td', { class: `num ${st}` }, markEl(st), fmtV(v == null ? null : v / scs[j].f));
+        const sc = unitScale(us[j], Math.abs(v ?? 0));
+        return el('td', { class: `num ${st}`, 'data-v': v == null ? '' : String(v) }, markEl(st), fmtV(v == null ? null : v / sc.f), v == null ? null : unitEl(sc.unit));
       }))));
     root.replaceChildren(el('table', { class: 'mw-tb' }, head, body));
   }, ctx);

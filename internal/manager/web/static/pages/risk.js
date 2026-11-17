@@ -1,7 +1,7 @@
 // 장애 위험(#risk): 위험도 한 줄 → 확인할 것 → 추이. 이상 없음 기록 · 모델 · 장애 기록은 접힌 칸.
 // 계약: docs/cards/R-risk-hold.md. 위험도 = 이상 없음 처리한 요인을 뺀 값(open_index), 전체 = 원래 지수.
 import { api, poll } from '../api.js';
-import { el, fmtNum, fmtDuration, badgeHTML, table, toast, info, DASH } from '../ui.js';
+import { el, fmtNum, fmtDuration, badgeHTML, table, info, DASH, act as lock, confirmBox, stateBox, errReason, errText, fmtDT, setQuery } from '../ui.js';
 import { lineChart } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { gate } from '../auth.js';
@@ -61,20 +61,20 @@ export function trainLine(r) {
 export const pctText = (v) => (v == null ? DASH : `${fmtNum(v * 100, v < 0.1 ? 1 : 0)}%`);
 // 'YYYY-MM-DDTHH:mm'(datetime-local) → ms, 비어 있으면 0
 export function parseLocal(s) { if (!s) return 0; const t = new Date(s).getTime(); return Number.isNaN(t) ? 0 : t; }
-export function fmtDateTime(ts) {
-  if (!ts) return DASH;
-  const d = new Date(ts), p = (n) => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
 export function sortIncidents(list) { return [...list].sort((a, b) => b.start - a.start); }
 
 // ---- 화면 ----
-const errText = (e) => (e && e.error) || '';
+// 위험도를 못 읽었을 때: — 옆에 까닭
+function missing(err) {
+  const p = el('p', { class: 'empty' }, DASH);
+  if (err) p.append(el('span', { class: 'rmiss', text: ` 위험도를 읽지 못함 · ${errReason(err)}`, role: 'alert' }));
+  return p;
+}
 
 // 위험도 한 줄: 숫자 · 수준 · 전체와 이상 없음 수 · 뜻(ⓘ). 진행 중 장애는 그 아래 한 줄.
-function headBox(risk) {
-  const box = el('section', { class: 'rbox rhead' });
-  if (!risk) { box.append(el('p', { class: 'empty', text: DASH })); return box; }
+function headBox(risk, err) {
+  const box = el('section', { class: 'card rbox rhead' });
+  if (!risk) { box.append(missing(err)); return box; }
   const now = risk.now || Date.now();
   const lv = openLevel(risk), ov = openValue(risk), acc = acceptsOf(risk).length;
   const row = el('div', { class: 'rhead-row' });
@@ -97,18 +97,16 @@ function acceptForm(f, act) {
   const why = el('input', { type: 'text', name: 'reason', required: true, maxlength: '200', placeholder: '확인한 내용', 'aria-label': '이유' });
   const hours = el('select', { name: 'hours', 'aria-label': '기간' }, HOLD_HOURS.map((n) => el('option', { value: String(n), text: `${n}시간`, selected: n === 4 })));
   const lim = el('input', { type: 'number', name: 'limit', step: 'any', min: String(r.lo), max: String(r.hi), value: String(r.def), 'aria-label': '넘으면 해제할 값', title: `${fmtNum(r.lo)}~${fmtNum(r.hi)}` });
-  const msg = el('span', { class: 'racc-msg' });
+  const save = el('button', { type: 'submit', class: 'acc', text: '저장' });
   form.append(why, hours, el('label', { class: 'racc-lim' }, lim, el('span', { text: '넘으면 해제' })),
-    el('button', { type: 'submit', class: 'acc', text: '저장' }), el('button', { type: 'button', text: '취소', onclick: () => act.form(null) }), msg);
+    save, el('button', { type: 'button', text: '취소', onclick: () => act.form(null) }));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!why.value.trim()) return;
-    msg.textContent = '';
     const until = Date.now() + Number(hours.value) * 3600000;
     // 값을 고치지 않았으면 보내지 않는다(서버가 자기 마지막 값으로 기본 한도를 정한다).
     const limit = lim.value === String(r.def) ? undefined : Number(lim.value);
-    const err = await act.accept(f, { reason: why.value.trim(), until, limit });
-    if (err != null) msg.textContent = err;
+    await lock(save, () => act.accept(f, { reason: why.value.trim(), until, limit }), { ok: `${f.title} · 이상 없음으로 저장함`, fail: '저장하지 못함' });
   });
   setTimeout(() => why.focus(), 0);
   return form;
@@ -139,12 +137,12 @@ function heldRow(f, now, act) {
     el('div', { class: 'rc-name' }, el('b', { text: f.title }), h.reason ? el('span', { text: h.reason, title: h.reason }) : null),
     el('div', { class: 'rc-val', text: f.value == null ? DASH : fmtNum(f.value) }),
     el('div', { class: 'rc-hold', text: holdLine(h, now) }),
-    el('div', { class: 'rc-act' }, gate(el('button', { type: 'button', text: '해제', onclick: () => act.release(h) }), 'operator')));
+    el('div', { class: 'rc-act' }, gate(el('button', { type: 'button', text: '해제', onclick: (e) => act.release(h, f.title, e.currentTarget) }), 'operator')));
 }
 
-function checkBox(risk, stats, ctx, act, formFeature) {
-  const box = el('section', { class: 'rbox rcheck' }, el('h2', { class: 'sec', text: '점검 항목' }));
-  if (!risk) { box.append(el('p', { class: 'empty', text: DASH })); return box; }
+function checkBox(risk, stats, ctx, act, formFeature, err) {
+  const box = el('section', { class: 'card rbox rcheck' }, el('h2', { class: 'sec', text: '점검 항목' }));
+  if (!risk) { box.append(missing(err)); return box; }
   const now = risk.now || Date.now();
   const { open, held } = checkRows(risk);
   if (!open.length) box.append(el('p', { class: 'rnone', text: held.length ? '남은 요인 없음' : '두드러진 요인 없음' }));
@@ -158,16 +156,23 @@ function checkBox(risk, stats, ctx, act, formFeature) {
 }
 
 // 접힌 칸. 열림 상태는 다시 그려도 유지한다.
+// 주소 ?open=hold,model,inc 로도 남긴다(새로 고침·링크 공유에 유지)
+export const FOLD_QUERY = { holds: 'hold', model: 'model', incidents: 'inc' };
 function fold(key, summary, body, opened) {
-  const d = el('details', { class: 'rbox rfold', open: opened.has(key) });
-  d.addEventListener('toggle', () => { if (d.open) opened.add(key); else opened.delete(key); });
+  const d = el('details', { class: 'card rbox rfold', open: opened.has(key) });
+  d.addEventListener('toggle', () => {
+    if (d.open === opened.has(key)) return;
+    if (d.open) opened.add(key); else opened.delete(key);
+    if (FOLD_QUERY[key]) setQuery({ open: Object.keys(FOLD_QUERY).filter((k) => opened.has(k)).map((k) => FOLD_QUERY[k]).join(',') });
+  });
   d.append(el('summary', {}, ...summary), ...body);
   return d;
 }
 
-function holdsFold(data, opened) {
+function holdsFold(data, opened, err, retry) {
   const stats = (data && data.stats) || [];
   const n = stats.reduce((s, x) => s + x.count, 0);
+  if (!data && err) return fold('holds', [el('b', { text: '이상 없음 기록' }), el('span', { text: DASH })], [stateBox('error', { text: '이상 없음 기록을 읽지 못함', e: err, retry })], opened);
   const body = stats.length
     ? [table({ rows: stats, columns: [
       { label: '요인', key: 'title' },
@@ -178,11 +183,11 @@ function holdsFold(data, opened) {
   return fold('holds', [el('b', { text: '이상 없음 기록' }), el('span', { text: `7일 ${fmtNum(n)}번` })], body, opened);
 }
 
-function modelFold(risk, onTrained, opened) {
-  if (!risk) return fold('model', [el('b', { text: '모델' }), el('span', { text: DASH })], [], opened);
+function modelFold(risk, onTrained, opened, err) {
+  if (!risk) return fold('model', [el('b', { text: '모델' }), el('span', { text: DASH })], err ? [missing(err)] : [], opened);
   const m = risk.model || {};
   const dl = el('dl');
-  const items = isRule(risk) ? [] : [['학습', fmtDateTime(m.trained_at)], ['창 · 양성', `${fmtNum(m.windows)} · ${fmtNum(m.positives)}`],
+  const items = isRule(risk) ? [] : [['학습', fmtDT(m.trained_at)], ['창 · 양성', `${fmtNum(m.windows)} · ${fmtNum(m.positives)}`],
     ['장애', `${fmtNum(m.incidents)}건`], ['AUC', fmtNum(m.auc, 2)], ['lead', `${fmtNum((m.lead_sec || 0) / 60)}분`],
     ['절편 보정', m.prior_offset ? `−${fmtNum(m.prior_offset, 2)}` : DASH],
     ['확인 전 자동', `${fmtNum(m.unconfirmed || 0)}건`, '자동으로 열린 장애 기록 중 아직 장애로 확인하지 않은 것. 학습 라벨로 쓰지 않습니다.'],
@@ -193,9 +198,8 @@ function modelFold(risk, onTrained, opened) {
   for (const [k, v, tip] of items) dl.append(el('dt', {}, k, ...(tip ? [' ', info(tip)] : [])), el('dd', { text: v }));
   const res = el('span', { class: 'mres' });
   const btn = gate(el('button', { type: 'button', text: '지금 학습', onclick: async () => {
-    btn.disabled = true;
-    try { const r = await api('/risk/train', { method: 'POST' }); res.textContent = trainLine({ ...r.report, ...r, kind: (r.report || r).kind }); onTrained(); } catch (e) { res.textContent = '학습하지 못함'; }
-    btn.disabled = false;
+    res.textContent = '';
+    await lock(btn, async () => { const r = await api('/risk/train', { method: 'POST' }); res.textContent = trainLine({ ...r.report, ...r, kind: (r.report || r).kind }); onTrained(); }, { fail: '학습하지 못함' });
   } }), 'admin');
   const body = [dl, el('div', {}, btn, res)];
   const w = m.weights;
@@ -212,31 +216,29 @@ function modelFold(risk, onTrained, opened) {
 function incidentFold(incidents, leadSec, reload, opened) {
   const open = incidents.filter((i) => !i.end).length, unconf = unconfirmedOf(incidents);
   const lead = fmtNum((leadSec || 300) / 60);
-  const confirm = async (i, yes) => {
-    try {
-      await api(`/incidents/${i.id}`, { method: 'PATCH', body: { confirmed: yes } });
-      toast(yes ? '장애로 확인함 · 다음 학습부터 라벨' : '확인 취소함 · 다음 학습부터 라벨에서 뺌');
-      reload();
-    } catch (e) { toast(`${yes ? '확인' : '확인 취소'}하지 못함 · ${errText(e)}`); }
+  const confirm = async (btn, i, yes) => {
+    const done = await lock(btn, () => api(`/incidents/${i.id}`, { method: 'PATCH', body: { confirmed: yes } }),
+      { ok: yes ? '장애로 확인함 · 다음 학습부터 라벨' : '확인 취소함 · 다음 학습부터 라벨에서 뺌', fail: `${yes ? '장애로 확인' : '확인 취소'}하지 못함` });
+    if (done) reload();
   };
   const sourceCell = (i) => {
     if (i.source !== 'auto') return sourceText(i);
     const btn = i.confirmed
-      ? el('button', { type: 'button', class: 'ilink', text: '확인 취소', onclick: () => confirm(i, false) })
-      : el('button', { type: 'button', text: '장애로 확인', title: '실제 장애였다면 확인 — 학습 라벨이 됩니다', onclick: () => confirm(i, true) });
+      ? el('button', { type: 'button', class: 'ilink', text: '확인 취소', onclick: (e) => confirm(e.currentTarget, i, false) })
+      : el('button', { type: 'button', text: '장애로 확인', title: '실제 장애였다면 확인 — 학습 라벨이 됩니다', onclick: (e) => confirm(e.currentTarget, i, true) });
     return el('span', { class: i.confirmed ? '' : 'iunconf' }, sourceText(i), ' ', gate(btn, 'operator'));
   };
   const endCell = (i) => {
-    if (i.end) return fmtDateTime(i.end);
+    if (i.end) return fmtDT(i.end);
     const inp = el('input', { type: 'datetime-local', 'aria-label': '끝 시각' });
-    return el('span', {}, '진행 중 ', inp, gate(el('button', { type: 'button', text: '끝내기', onclick: async () => {
+    return el('span', {}, '진행 중 ', inp, gate(el('button', { type: 'button', text: '끝내기', onclick: async (e) => {
       const t = parseLocal(inp.value);
-      if (!t) return;
-      try { await api(`/incidents/${i.id}`, { method: 'PATCH', body: { end: t } }); reload(); } catch (e) { toast('고치지 못함'); }
+      if (!t) { inp.focus(); return; }
+      if (await lock(e.currentTarget, () => api(`/incidents/${i.id}`, { method: 'PATCH', body: { end: t } }), { ok: '장애 기록을 끝냄', fail: '고치지 못함' })) reload();
     } }), 'operator'));
   };
   const tbl = table({ rows: sortIncidents(incidents), empty: '없음', columns: [
-    { label: '시작', render: (i) => fmtDateTime(i.start) }, { label: '끝', render: endCell },
+    { label: '시작', render: (i) => fmtDT(i.start) }, { label: '끝', render: endCell },
     { label: '범위', render: (i) => i.scope || DASH }, { label: '제목', key: 'title' },
     { label: '출처', render: sourceCell }] });
 
@@ -245,29 +247,27 @@ function incidentFold(incidents, leadSec, reload, opened) {
   const e = el('input', { type: 'datetime-local', name: 'end', 'aria-label': '끝' });
   const sc = el('input', { type: 'text', name: 'scope', placeholder: '범위' });
   const ti = el('input', { type: 'text', name: 'title', placeholder: '제목', required: true });
-  f.append(s, e, sc, ti, gate(el('button', { type: 'submit', text: '추가' }), 'operator'));
+  const add = gate(el('button', { type: 'submit', text: '추가' }), 'operator');
+  f.append(s, e, sc, ti, add);
   f.addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    try {
-      await api('/incidents', { method: 'POST', body: { start: parseLocal(s.value), end: parseLocal(e.value), scope: sc.value.trim(), title: ti.value.trim() } });
-      f.reset(); reload();
-    } catch (err) { toast('추가하지 못함'); }
+    const ok = await lock(add, () => api('/incidents', { method: 'POST', body: { start: parseLocal(s.value), end: parseLocal(e.value), scope: sc.value.trim(), title: ti.value.trim() } }), { ok: '장애 기록을 더함', fail: '추가하지 못함' });
+    if (ok) { f.reset(); reload(); }
   });
   const ta = el('textarea', { placeholder: 'start,end,scope,title', 'aria-label': 'CSV' });
   const out = el('span', { class: 'mres' });
   const imp = gate(el('button', { type: 'button', text: 'CSV 가져오기', onclick: async () => {
-    if (!ta.value.trim()) return;
-    try { const r = await api('/incidents/import', { method: 'POST', body: ta.value }); out.textContent = `${r.imported}건 가져옴`; ta.value = ''; reload(); } catch (err) { out.textContent = `가져오지 못함 · ${errText(err)}`; }
+    if (!ta.value.trim()) { ta.focus(); return; }
+    out.textContent = '';
+    await lock(imp, async () => { const r = await api('/incidents/import', { method: 'POST', body: ta.value }); out.textContent = `${r.imported}건 가져옴`; ta.value = ''; reload(); }, { fail: '가져오지 못함' });
   } }), 'admin');
-  const dl = gate(el('button', { type: 'button', text: '학습 데이터 내려받기', onclick: async () => {
-    try {
+  const dl = gate(el('button', { type: 'button', text: '학습 데이터 내려받기', onclick: () => lock(dl, async () => {
       const text = await api('/export/risk-dataset');
       const a = el('a', { href: URL.createObjectURL(new Blob([typeof text === 'string' ? text : JSON.stringify(text)], { type: 'text/csv' })), download: 'risk-dataset.csv' });
       a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    } catch (err) { toast('내려받지 못함'); }
-  } }), 'operator');
+    }, { fail: '내려받지 못함' }) }), 'operator');
   const tools = fold('incident-add', [el('b', { text: '추가 · 가져오기' })], [f, el('div', { class: 'icsv' }, ta, el('div', { class: 'irow' }, imp, dl, out))], opened);
-  tools.classList.remove('rbox');
+  tools.classList.remove('card', 'rbox');
   const sum = `${fmtNum(incidents.length)}건${open ? ` · 진행 중 ${open}` : ''}`;
   const tip = info(`학습 라벨: 직접·가져옴·시연 기록과 장애로 확인한 자동 기록. 장애 시작 전 ${lead}분을 "곧 장애"로 배우고, 장애 중과 확인 전 자동 기록은 뺍니다.`);
   return fold('incidents', [el('b', { text: '장애 기록' }), el('span', { text: sum }), unconf ? el('span', { class: 'iunconf', text: `확인 전 자동 ${unconf}` }) : null, tip], [tbl, tools], opened);
@@ -283,53 +283,57 @@ export function render(root, params, query) {
   root.innerHTML = '';
   const trHost = el('div');
   const head = el('div'), check = el('div');
-  const mid = el('section', { class: 'rbox' }, el('h2', { class: 'sec', text: '추이' }));
+  const mid = el('section', { class: 'card rbox' }, el('h2', { class: 'sec', text: '추이' }));
   const folds = el('div', { class: 'rfolds' });
   const chartHost = el('div');
   mid.append(trHost, chartHost);
   root.append(el('h2', { class: 'sec', text: '장애 위험도' }), head, check, mid, folds);
   const tr = createTimeRange(trHost);
-  const opened = new Set();
-  let risk = null, incidents = [], holds = null, formFeature = null, incSig = '';
+  const opened = new Set(String((query && query.open) || '').split(',').map((k) => Object.keys(FOLD_QUERY).find((x) => FOLD_QUERY[x] === k)).filter(Boolean));
+  let risk = null, riskErr = null, incidents = [], incErr = null, holds = null, holdsErr = null, formFeature = null, incSig = '';
   let ctx = { hosts: [], panels: [] };
   const foldHosts = { holds: el('div'), model: el('div'), incidents: el('div') };
   folds.append(foldHosts.holds, foldHosts.model, foldHosts.incidents);
 
   const act = {
     form: (f) => { formFeature = f ? f.feature : null; drawCheck(); },
+    // 실패하면 던진다(부른 쪽의 act()가 알림을 띄운다)
     accept: async (f, b) => {
-      try {
-        await api('/risk/holds', { method: 'POST', body: { feature: f.feature, kind: 'accept', ...b } });
-        formFeature = null;
-        await reloadRisk();
-        return null;
-      } catch (e) { return errText(e) || '저장하지 못함'; }
+      await api('/risk/holds', { method: 'POST', body: { feature: f.feature, kind: 'accept', ...b } });
+      formFeature = null;
+      await reloadRisk();
     },
-    release: async (h) => {
-      try { await api(`/risk/holds/${h.id}`, { method: 'DELETE' }); await reloadRisk(); } catch (e) { toast(`해제하지 못함 · ${errText(e)}`); }
+    release: async (h, title, btn) => {
+      const r = await confirmBox({ title: '이상 없음 해제', message: `${title || '이 요인'}을(를) 위험도에 다시 넣습니다.`, okText: '해제' });
+      if (!r.ok) return;
+      await lock(btn, async () => { await api(`/risk/holds/${h.id}`, { method: 'DELETE' }); await reloadRisk(); }, { ok: '이상 없음을 해제함', fail: '해제하지 못함' });
     },
   };
-  const drawHead = () => head.replaceChildren(headBox(risk));
-  const drawCheck = () => check.replaceChildren(checkBox(risk, holds && holds.stats, ctx, act, formFeature));
-  const drawModel = () => foldHosts.model.replaceChildren(modelFold(risk, loadAll, opened));
-  const drawHolds = () => foldHosts.holds.replaceChildren(holdsFold(holds, opened));
+  const drawHead = () => head.replaceChildren(headBox(risk, riskErr));
+  const drawCheck = () => check.replaceChildren(checkBox(risk, holds && holds.stats, ctx, act, formFeature, riskErr));
+  const drawModel = () => foldHosts.model.replaceChildren(modelFold(risk, loadAll, opened, riskErr));
+  const drawHolds = () => foldHosts.holds.replaceChildren(holdsFold(holds, opened, holdsErr, () => loadHolds()));
   // 장애 기록은 바뀐 때만 다시 그린다(추가 폼에 쓰던 글이 지워지지 않게).
   const drawInc = () => {
     const lead = risk && risk.model ? risk.model.lead_sec : undefined;
-    const sig = JSON.stringify([incidents, lead]);
+    const sig = JSON.stringify([incidents, lead, incErr && errText(incErr)]);
     if (sig === incSig) return;
     incSig = sig;
-    foldHosts.incidents.replaceChildren(incidentFold(incidents, lead, () => { incSig = ''; loadInc(); }, opened));
+    foldHosts.incidents.replaceChildren(incErr
+      ? fold('incidents', [el('b', { text: '장애 기록' }), el('span', { text: DASH })], [stateBox('error', { text: '장애 기록을 읽지 못함', e: incErr, retry: () => loadInc() })], opened)
+      : incidentFold(incidents, lead, () => { incSig = ''; loadInc(); }, opened));
   };
-  const loadRisk = async () => {
-    risk = await api('/risk').catch(() => null);
+  // strict면 실패를 다시 던진다(poll이 갱신 끊김으로 센다)
+  const loadRisk = async (strict) => {
+    try { risk = await api('/risk'); riskErr = null; } catch (e) { riskErr = e; }
     drawHead();
     drawModel();
     drawInc(); // lead가 바뀐 때만 다시 그려진다
     if (!formFeature) drawCheck(); // 이상 없음 폼을 쓰는 동안은 다시 그리지 않는다
+    if (riskErr && strict) throw riskErr;
   };
   const loadHolds = async () => {
-    holds = await api(`/risk/holds?from=${Date.now() - 7 * 86400000}&to=${Date.now()}`).catch(() => null);
+    try { holds = await api(`/risk/holds?from=${Date.now() - 7 * 86400000}&to=${Date.now()}`); holdsErr = null; } catch (e) { holds = null; holdsErr = e; }
     drawHolds();
     if (!formFeature) drawCheck();
   };
@@ -338,14 +342,20 @@ export function render(root, params, query) {
     const [h, p] = await Promise.all([api('/hosts').catch(() => ({})), api('/panels').catch(() => ({}))]);
     ctx = { hosts: h.hosts || [], panels: p.panels || [] };
   };
-  const loadInc = async () => {
+  const loadInc = async (strict) => {
     const { from, to } = tr.current();
-    incidents = (await api(`/incidents?from=${Math.round(from)}&to=${Math.round(to)}`)).incidents || [];
+    try { incidents = (await api(`/incidents?from=${Math.round(from)}&to=${Math.round(to)}`)).incidents || []; incErr = null; } catch (e) { incErr = e; if (strict) { drawInc(); throw e; } }
     drawInc(); loadChart();
   };
   const loadChart = async () => {
     const { from, to } = tr.current();
-    const r = await api(`/series?host=_eum&name=risk.index,risk.index_open&from=${Math.round(from)}&to=${Math.round(to)}`);
+    let r;
+    try { r = await api(`/series?host=_eum&name=risk.index,risk.index_open&from=${Math.round(from)}&to=${Math.round(to)}`); } catch (e) {
+      if (chart) { try { chart.destroy(); } catch (e2) { /* 무시 */ } chart = null; }
+      chartHost.replaceChildren(stateBox('error', { text: '추이를 읽지 못함', e, retry: () => loadChart() }));
+      return;
+    }
+    chartHost.querySelector(':scope > .state')?.remove();
     const pts = (n) => ((r.series || []).find((s) => s.name === n) || {}).points || [];
     const line = (v) => [[from, v], [to, v]];
     const series = [{ label: '위험도', data: pts('risk.index_open') }, { label: '전체', data: pts('risk.index'), color: '--t3' },
@@ -357,6 +367,6 @@ export function render(root, params, query) {
   tr.onChange(() => { if (chart) { chart.destroy(); chart = null; } loadInc(); });
   loadCtx().then(() => { if (!formFeature) drawCheck(); });
   loadHolds();
-  poll(async () => { await loadRisk(); if (tr.current().live) await loadInc(); }, 10000);
+  poll(async () => { await loadRisk(true); if (tr.current().live) await loadInc(true); }, 10000);
 }
 export function dispose() { if (chart) { try { chart.destroy(); } catch (e) { /* 무시 */ } chart = null; } }

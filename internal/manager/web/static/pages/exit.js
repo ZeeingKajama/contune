@@ -7,11 +7,10 @@
 // Kubernetes lastState.terminated(종료 사유를 상태로), Windows WER 버킷(원인 분류).
 // API(계약 §4): GET /exits/{id} · /exits/{id}/pack · /exits/{id}/prompt, POST /exits/{id}/analyze, GET /exits?exec_id=
 import { api } from '../api.js';
-import { el, esc, fmtNum, relTime, fmtDuration, fmtClock, shortExec, toast, openDrawer, info, DASH } from '../ui.js';
+import { el, enc, esc, fmtNum, relTime, fmtDuration, fmtClock, shortExec, toast, openDrawer, info, stateBox, setTitle, fmtDT, DASH } from '../ui.js';
 import { can } from '../auth.js';
 import { svcHash, ownerHash, serviceTitles } from './dashboard.js';
 
-const q = encodeURIComponent;
 
 // ---- 순수 함수 (DOM 없이 호출) ----
 export const CATEGORY_TEXT = {
@@ -88,7 +87,7 @@ export function endText(x) {
 // 알림(kind exit)의 화면 주소: dedup_key "exit:<id>" → #exit/<id>
 export function exitHashOfAlert(a) {
   const m = /^exit:(.+)$/.exec(String(a.dedup_key || ''));
-  if (m) return '#exit/' + q(m[1]);
+  if (m) return '#exit/' + enc(m[1]);
   return ownerHash(a.exec_id) || '#alerts';
 }
 // 타임머신 띠 글: "프로세스 종료 1건 — matching_svc SIGSEGV · book_insert에서 NULL 역참조"
@@ -164,6 +163,7 @@ export function parseStackLine(s) {
   const m = /^\s*([\d.,]+%)\s+(\S*;\S*)\s*$/.exec(String(s || ''));
   return m ? { pct: m[1], stack: m[2].split(';').filter(Boolean) } : null;
 }
+// collectwiz.js의 fmtBytes와 글 모양이 다르다(여기는 단위를 붙이고 GB까지·소수 한 자리, 거기는 띄우고 TB까지·100 넘으면 정수). 합치면 화면 글이 바뀌어 따로 둔다
 export function fmtBytes(n) {
   if (n == null) return DASH;
   const u = ['B', 'KB', 'MB', 'GB'];
@@ -171,12 +171,7 @@ export function fmtBytes(n) {
   while (v >= 1024 && k < u.length - 1) { v /= 1024; k++; }
   return `${fmtNum(v, k ? 1 : 0)}${u[k]}`;
 }
-const p2 = (n) => String(n).padStart(2, '0');
-export function fmtWhen(ts) {
-  if (!ts) return DASH;
-  const d = new Date(ts);
-  return `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
-}
+export function fmtWhen(ts) { return fmtDT(ts, { sec: true }); }
 // 코드 자리 글: demo/matching_svc.c:117–119 (한 줄이면 :142)
 export function refText(r) {
   const s = Number(r && r.start) || 0, e = Number(r && r.end) || 0;
@@ -192,7 +187,7 @@ export function snippetOf(code, r) {
     && a >= s.start && b <= snipEnd(s));
 }
 const isUlid = (s) => /^[0-9A-HJKMNP-TV-Z]{26}$/.test(String(s || ''));
-const runRef = (s) => '#run/' + q(s);
+const runRef = (s) => '#run/' + enc(s);
 
 // ---- DOM 도움 ----
 const mono = (text, cls = '') => el('code', { class: 'ex-mono ' + cls, text });
@@ -255,7 +250,7 @@ export function exitStrip(items) {
   if (!items || !items.length) return null;
   const it = items[0];
   const lv = exitLevel(it.category) || 'info';
-  return el('a', { class: `tm-exit ${lv}`, href: '#exit/' + q(it.id), title: '종료 보고서 열기' },
+  return el('a', { class: `tm-exit ${lv}`, href: '#exit/' + enc(it.id), title: '종료 보고서 열기' },
     el('span', { class: 'mk', text: lv === 'crit' ? '■' : lv === 'warn' ? '▲' : '●' }),
     el('span', { class: 'tx', text: stripText(items) }), el('span', { class: 'go', text: '→' }));
 }
@@ -273,9 +268,11 @@ export async function render(root, params) {
   const page = el('div', { class: 'ex' });
   root.append(page);
   let d;
-  try { d = await api('/exits/' + q(id)); } catch (e) {
+  try { d = await api('/exits/' + enc(id)); } catch (e) {
+    setTitle('종료 보고서');
     page.append(el('h2', { class: 'ex-h2', text: '종료 보고서' }),
-      el('p', { class: 'empty', text: e.status === 404 ? '종료 보고서를 찾을 수 없음' : '종료 보고서를 불러오지 못함' }),
+      e && e.status === 404 ? el('p', { class: 'empty', text: '종료 보고서를 찾을 수 없음' })
+        : stateBox('error', { text: '종료 보고서를 불러오지 못함', e, detail: '서버 연결을 확인한 뒤 다시 시도', retry: () => { root.replaceChildren(); return render(root, params); } }),
       el('a', { href: '#exits', text: '종료 보고서 목록으로' }));
     return;
   }
@@ -296,6 +293,7 @@ export async function render(root, params) {
   if (code.length) have.add('source');
   const rule = d.rule || { category: 'unknown', title: '원인 미상', confidence: 'low', by: 'rule', evidence_ids: [] };
   const level = exitLevel(rule.category, rep.resident);
+  setTitle(`${reportTitle(rule, rep)} · 종료 보고서`);
   const top = frames[0] && frames[0].func && frames[0].func !== '??' ? frames[0] : null;
   const crashFunc = top ? top.func : '';
   const st = { fold: true, opened: new Set(), llmMsg: '', prompt: null };
@@ -305,7 +303,7 @@ export async function render(root, params) {
 
   async function download() {
     try {
-      const body = await api(`/exits/${q(id)}/pack`);
+      const body = await api(`/exits/${enc(id)}/pack`);
       const blob = new Blob([typeof body === 'string' ? body : JSON.stringify(body, null, 2) + '\n'], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = el('a', { href: url, download: `exit-${id}.json` });
@@ -320,14 +318,14 @@ export async function render(root, params) {
   const head = el('div', { class: 'ex-head' });
   {
     const crumbs = [el('a', { href: '#exits', text: '종료 보고서' })];
-    if (rep.host) crumbs.push(' › ', el('a', { href: '#exits?host=' + q(rep.host), text: rep.host, title: '이 서버에서 끝난 프로세스' }));
+    if (rep.host) crumbs.push(' › ', el('a', { href: '#exits?host=' + enc(rep.host), text: rep.host, title: '이 서버에서 끝난 프로세스' }));
     const mk = level === 'crit' ? '■' : level === 'warn' ? '▲' : '●';
     const proc = el('span', {}, '프로세스 ', el('b', { class: 'ex-mono', text: rep.comm || DASH }),
       el('span', { class: 'dim', text: ` · pid ${rep.pid ?? DASH}` }),
       rep.resident ? el('span', { class: 'dim', text: ' · 상주', title: '스텝이 끝난 뒤에도 살아 있던 프로세스' }) : null,
       rep.leader ? el('span', { class: 'dim', text: ' · 스텝 프로세스', title: '에이전트가 띄운 스텝 자신' }) : null);
     head.append(
-      el('div', { class: 'ex-crumb' }, crumbs),
+      el('div', { class: 'crumb' }, crumbs),
       el('div', { class: 'ex-title' },
         el('span', { class: `badge ${level || 'silent'}`, text: `${mk} ${endText(rep)}` }),
         el('h2', { class: 'ex-h2', text: reportTitle(rule, rep) }),
@@ -335,7 +333,7 @@ export async function render(root, params) {
         el('button', { type: 'button', text: '⤓ 근거 묶음', title: '근거 묶음 내려받기(JSON)', onclick: download })),
       el('div', { class: 'ex-meta' }, proc,
         rep.service ? el('span', {}, '서비스 ', el('a', { class: 'ex-svc', href: svcAt, title: '서비스 타임머신에서 끝난 시각 앞뒤 보기' }, svcTitle, ' →')) : null,
-        el('span', {}, '서버 ', el('a', { href: `#host/${q(rep.host || '')}/proc`, text: rep.host || DASH, title: '이 서버의 프로세스 탭' })),
+        el('span', {}, '서버 ', el('a', { href: `#host/${enc(rep.host || '')}/proc`, text: rep.host || DASH, title: '이 서버의 프로세스 탭' })),
         el('span', {}, '기동 ', launchedBy(rep, pk)),
         rep.killed_by_agent ? el('span', { class: 'ex-warn', text: '이음이 종료 신호 보냄' }) : null));
   }
@@ -362,13 +360,13 @@ export async function render(root, params) {
   }
 
   // 원인(규칙 판단). 제목은 머리에 있다.
-  const cause = el('section', { class: `ex-card ex-cause ${level}`, id: 'ex-cause' },
+  const cause = el('section', { class: `card ex-card ex-cause ${level}`, id: 'ex-cause' },
     el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: '원인' }), verdict(rule),
       info('근거 묶음만 보고 규칙이 가린 원인. 근거를 누르면 그 칸으로 간다')),
     diagBody(rule, have));
 
   // 호출 스택
-  const stackCard = el('section', { class: 'ex-card', id: 'ex-ev-core' });
+  const stackCard = el('section', { class: 'card ex-card', id: 'ex-ev-core' });
   function drawStack() {
     const ch = el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: '호출 스택' }),
       info('신호를 받은 스레드의 호출 스택. #0이 크래시 지점, 아래로 갈수록 호출한 쪽. 실행 파일 프레임은 진하게, 라이브러리 프레임은 흐리게, 추정 프레임은 기울여 그린다'));
@@ -387,9 +385,10 @@ export async function render(root, params) {
     const tb = el('tbody');
     for (const r of stackRows(frames, exeMod, st.fold, st.opened)) {
       if (r.fold) {
-        tb.append(el('tr', { class: 'fold', title: '눌러서 펼치기', onclick: () => { st.opened.add(r.from); drawStack(); } },
+        tb.append(el('tr', { class: 'fold' },
           el('td', { class: 'n num', text: `#${r.from}–${r.to}` }),
-          el('td', { colspan: 4 }, `▸ ${r.modules.join(', ')} 프레임 ${r.n}개 접힘`)));
+          el('td', { colspan: 4 }, el('button', { type: 'button', class: 'ex-foldb', title: '눌러서 펼치기', onclick: () => { st.opened.add(r.from); drawStack(); } },
+            `▸ ${r.modules.join(', ')} 프레임 ${r.n}개 접힘`))));
         continue;
       }
       const f = r.f;
@@ -410,7 +409,7 @@ export async function render(root, params) {
   }
 
   // 소스(카드 Q): 토막마다 머리(파일:줄 · 함수 · 뽑은 까닭) · 줄 번호와 코드 · 최근 변경. 첫 토막만 펼친다.
-  const srcCard = code.length ? el('section', { class: 'ex-card ex-src', id: 'ex-ev-source' }) : null;
+  const srcCard = code.length ? el('section', { class: 'card ex-card ex-src', id: 'ex-ev-source' }) : null;
   function drawSource() {
     const cv = pk.code_version || null;
     const sev = evs.get('source');
@@ -469,7 +468,7 @@ export async function render(root, params) {
   }
 
   // 직전 상황: 근거 한 줄 = 왼쪽 이름 · 오른쪽 요약과 내용
-  const prior = el('section', { class: 'ex-card' }, el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: '직전 상황' }),
+  const prior = el('section', { class: 'card ex-card' }, el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: '직전 상황' }),
     info('죽기 전 프로세스·서버 지표, 직전 프로파일, 애플리케이션 로그, 표준 출력, 커널 로그, 같은 서버의 다른 실행·운영자 조작')));
   const evLines = (e) => {
     if ((e.lines || []).length) return e.lines;
@@ -521,7 +520,7 @@ export async function render(root, params) {
   function evBlock(e) {
     const refs = (e.refs || []).map((r) => {
       if (!isUlid(r)) return el('span', { class: 'ex-mono', text: r });
-      return e.id === 'prev' ? el('a', { href: '#exit/' + q(r), text: `종료 보고서 #${shortExec(r)}` }) : el('a', { href: runRef(r), text: `실행 #${shortExec(r)}` });
+      return e.id === 'prev' ? el('a', { href: '#exit/' + enc(r), text: `종료 보고서 #${shortExec(r)}` }) : el('a', { href: runRef(r), text: `실행 #${shortExec(r)}` });
     });
     return el('div', { class: 'ex-ev', id: 'ex-ev-' + e.id },
       el('div', { class: 'ex-evk', text: EV_TEXT[e.id] || e.id }),
@@ -536,7 +535,7 @@ export async function render(root, params) {
   prior.append(priorItems.length ? el('div', { class: 'ex-evs' }, priorItems.map(evBlock)) : el('p', { class: 'empty', text: '직전 상황 근거 없음' }));
 
   // 종료 정보: 신호·core(왼쪽) · 프로세스(오른쪽)
-  const infoCard = el('section', { class: 'ex-card', id: 'ex-ev-exit' });
+  const infoCard = el('section', { class: 'card ex-card', id: 'ex-ev-exit' });
   {
     const howTxt = rep.how === 'signal' ? '신호로 종료' : rep.how === 'exit' ? '스스로 종료' : '모름';
     const codeTxt = core && core.code_name ? `${core.code_name} · ${core.code_text || CODE_TEXT[core.code_name] || '설명 없음'}` : null;
@@ -577,9 +576,9 @@ export async function render(root, params) {
   }
 
   // LLM 참고 초안
-  const llmCard = el('section', { class: 'ex-card ex-llm', id: 'ex-llm' });
+  const llmCard = el('section', { class: 'card ex-card ex-llm', id: 'ex-llm' });
   async function getPrompt() {
-    if (!st.prompt) st.prompt = await api(`/exits/${q(id)}/prompt`);
+    if (!st.prompt) st.prompt = await api(`/exits/${enc(id)}/prompt`);
     return st.prompt;
   }
   const promptText = (p) => [p.system, p.prompt].filter(Boolean).join('\n\n');
@@ -617,7 +616,7 @@ export async function render(root, params) {
       msg.className = 'ex-pmsg';
       msg.textContent = '';
       try {
-        const r = await api(`/exits/${q(id)}/analyze`, { method: 'POST', body: { answer } });
+        const r = await api(`/exits/${enc(id)}/analyze`, { method: 'POST', body: { answer } });
         if (r && r.llm) {
           d.llm = r.llm;
           st.llmMsg = '';
@@ -652,7 +651,7 @@ export async function render(root, params) {
     clearInterval(waitTick);
     waitTick = setInterval(show, 1000);
     try {
-      const r = await api(`/exits/${q(id)}/analyze`, { method: 'POST' });
+      const r = await api(`/exits/${enc(id)}/analyze`, { method: 'POST' });
       if (r && r.available) { d.llm = r.llm; st.llmMsg = ''; } else { d.llm_available = false; st.llmMsg = (r && r.message) || 'LLM 연동 뒤 쓸 수 있습니다'; }
     } catch (err) {
       st.llmMsg = err.status === 502 ? `LLM 답을 쓰지 못함: ${err.error}` : err.status === 403 ? '' : `분석을 요청하지 못함${err.error ? ': ' + err.error : ''}. 잠시 뒤 다시 맡기세요`;
@@ -698,7 +697,7 @@ export async function render(root, params) {
 
   // 수집하지 못한 정보
   const notes = [...(rep.notes || []), ...((core && core.notes) || [])];
-  const notesCard = notes.length ? el('section', { class: 'ex-card ex-notes' }, el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: '수집하지 못한 정보' })),
+  const notesCard = notes.length ? el('section', { class: 'card ex-card ex-notes' }, el('div', { class: 'ex-ch' }, el('h3', { class: 'sec', text: '수집하지 못한 정보' })),
     el('ul', {}, notes.map((s) => el('li', { text: s })))) : null;
 
   drawStack();

@@ -1,0 +1,50 @@
+/* P1 위 막대·트리: #top·#menu·#tree·#layout 다듬기 */
+/* 트리를 서랍으로 덮는 분기점: 트리(260) 옆 본문이 760 아래로 내려가는 폭. app.js는 #tree의 position:fixed로 이 구간을 안다(여기 한 곳만 고친다). */
+#top { white-space:nowrap; }
+.logo { flex:none; }
+#tree-toggle, #more { flex:none; padding:2px 8px; font-size:16px; line-height:1.2; }
+#more { display:none; }
+#menu { flex:0 1 auto; min-width:0; }
+#menu a { white-space:nowrap; flex:none; }
+#clock { flex:none; }
+#stale { flex:none; }
+#tree-scrim { display:none; }
+body[data-page="edit"] #tree-toggle { display:none; }
+
+/* 트리 위 칸: 찾기 */
+.tree-find { position:sticky; top:-8px; z-index:1; display:flex; gap:6px; align-items:center; margin:-8px -8px 6px; padding:8px; background:var(--surface); border-bottom:1px solid var(--line); }
+.tree-find input { flex:1; min-width:0; }
+.tree-find button { flex:none; padding:2px 8px; font-size:var(--fs-sm); }
+.tree-find button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
+.tree-none { color:var(--t3); padding:4px 8px; }
+.tnode:focus-visible { outline-offset:-2px; }
+
+@media (min-width:1025px) {
+  body.tree-off #tree { display:none; }
+}
+@media (max-width:1024px) {
+  #tree { position:fixed; top:44px; left:0; bottom:0; width:min(300px, 86vw); z-index:var(--z-drawer); display:none; box-shadow:2px 0 12px rgba(0,0,0,.25); }
+  body.tree-open #tree { display:block; }
+  body.tree-open #tree-scrim { display:block; position:fixed; inset:44px 0 0 0; z-index:calc(var(--z-drawer) - 1); background:rgba(0,0,0,.35); }
+  #tree-scrim[hidden] { display:none !important; }
+}
+@media (max-width:900px) {
+  #top { gap:10px; padding:0 10px; }
+  #menu { overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
+  #menu::-webkit-scrollbar { display:none; }
+  #menu a { padding:0 10px; }
+}
+@media (max-width:600px) {
+  #top { gap:6px; padding:0 8px; }
+  .logo { font-size:16px; letter-spacing:0; }
+  #menu { gap:0; min-width:48px; }
+  #menu a { padding:0 8px; }
+  #menu a.on { margin-bottom:0; }
+  #qj-open, #theme, #tree-toggle, #more { padding:2px 6px; }
+  #bell { font-size:var(--fs-md); }
+  #clock-t { display:none; }
+  #stale { max-width:84px; overflow:hidden; text-overflow:ellipsis; font-size:var(--fs-xs); }
+  #user:not([hidden]) ~ #more { display:inline-block; }
+  #user { display:none; }
+  body.more-open #user:not([hidden]) { display:flex; flex-direction:column; align-items:stretch; gap:6px; position:fixed; top:46px; right:8px; z-index:calc(var(--z-drawer) + 1); padding:8px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); box-shadow:0 4px 14px rgba(0,0,0,.25); }
+}

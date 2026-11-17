@@ -1,8 +1,8 @@
 // 편집기 #edit/<id> · #edit/new?board=&from= — 캔버스형 시각 편집기
 // 왼쪽 팔레트(스텝 추가) · 가운데 캔버스(자동 배치, 포트를 끌어 선행 연결) · 오른쪽 속성 창(또는 YAML)
 import { api, ApiError } from '../api.js';
-import { el, toast, confirmBox, DASH } from '../ui.js';
-import { hashOfFlow, hashOfBoard, fmtDT, cronText } from './batch.js';
+import { el, toast, confirmBox, DASH, errText, stateBox, setTitle, leaveGuard, trapFocus, fmtDT, p2 } from '../ui.js';
+import { hashOfFlow, hashOfBoard, cronText } from './batch.js';
 import { gate } from '../auth.js';
 
 // ---- 순수 함수 ----
@@ -135,6 +135,7 @@ export function wouldCycle(steps, from, to) {
   return false;
 }
 // 기간 문자열 '10m' → {n:10, u:'m'}. 초·분·시간만 칸으로 고치고 나머지(ms, 1h30m)는 null
+// dash.js의 parseDur(Go 기간 → ms)와 이름만 같고 하는 일이 다르다(여기는 숫자 칸 + 단위 칸으로 나누기). 그래서 합치지 않는다
 export function parseDur(s) {
   const m = /^(\d+)(s|m|h)$/.exec(String(s ?? '').trim());
   return m ? { n: Number(m[1]), u: m[2] } : null;
@@ -142,7 +143,6 @@ export function parseDur(s) {
 
 // 스케줄 빌더: cron ↔ {mode, time, minute, every, dows}
 export const SCHED_MODES = [['daily', '매일'], ['weekdays', '평일'], ['weekly', '매주'], ['hourly', '매시'], ['every', '주기'], ['manual', '수동'], ['cron', 'cron']];
-const p2 = (n) => String(n).padStart(2, '0');
 export function cronMode(expr) {
   const base = { mode: 'cron', time: '06:00', minute: 0, every: 10, dows: [1, 2, 3, 4, 5], raw: String(expr ?? '').trim() };
   const raw = base.raw;
@@ -210,8 +210,7 @@ export async function render(page, params, query = {}) {
   const info = await api('/editor').catch(() => ({ enabled: false, hosts: [], boards: [], examples: [], allow: [] }));
   const flowId = params.flow && params.flow !== 'new' ? params.flow : '';
   let st = emptyState();
-  let yamlText = '', loadErr = '';
-  const errText = (e) => (e instanceof ApiError ? e.error || `오류 ${e.status}` : String(e));
+  let yamlText = '', loadErr = null;
   if (flowId) {
     try {
       const d = await api(`/flows/${encodeURIComponent(flowId)}/def`);
@@ -219,18 +218,24 @@ export async function render(page, params, query = {}) {
       st.sha = d.sha || '';
       st.isNew = false;
       yamlText = d.yaml || '';
-    } catch (e) { loadErr = errText(e); }
+    } catch (e) { loadErr = e; }
   } else if (query.from) {
     try {
       const d = await api(`/flows/${encodeURIComponent(query.from)}/def`);
       st = stateFromDef(d.flow, d.board || (d.flow && d.flow.board) || boardOfFile(d.file), false);
       st.isNew = true;
       yamlText = d.yaml || '';
-    } catch (e) { loadErr = errText(e); }
+    } catch (e) { loadErr = e; }
   }
   if (!flowId && query.board && !st.board) st.board = query.board;
   if (!alive) return;
-  if (loadErr) { page.replaceChildren(el('p', { class: 'empty', text: loadErr })); return; }
+  setTitle(flowId ? `${flowId} · 편집` : '새 플로우 · 편집');
+  if (loadErr) {
+    page.replaceChildren(stateBox('error', { text: '플로우 정의를 불러오지 못함', e: loadErr, detail: '서버가 응답하면 다시 시도하세요.',
+      retry: () => { page.replaceChildren(stateBox('loading')); dispose(); render(page, params, query); },
+      action: { text: '← 배치로', href: '#board/' } }));
+    return;
+  }
 
   if (!info.enabled) {
     page.replaceChildren(
@@ -253,8 +258,10 @@ function mount(page, info, st, ctx) {
 
   // ---- 도구 막대 ----
   const backHref = () => (!st.isNew && ctx.flowId ? hashOfFlow(st.board, st.id) : (ctx.query.board ? hashOfBoard(ctx.query.board) : '#board/'));
+  cleanups.push(leaveGuard(() => ui.dirty));
   const back = el('button', { type: 'button', class: 'ed-back', text: '← 돌아가기', onclick: async () => {
     if (ui.dirty && !(await confirmBox({ title: '나가기', message: '저장하지 않은 변경이 있습니다.', okText: '나가기' })).ok) return;
+    ui.dirty = false;
     location.hash = backHref();
   } });
   const title = el('span', { class: 'ed-title' });
@@ -442,7 +449,7 @@ function mount(page, info, st, ctx) {
       const n = el('div', { class: cls.join(' '), 'data-i': String(i), 'data-step': s.id, tabindex: '0', style: `left:${p.x}px;top:${p.y}px;width:${NW}px;height:${NH}px` },
         el('span', { class: 'ed-port in', title: '선행 스텝에서 들어오는 연결' }),
         el('div', { class: 'ed-n1' }, el('code', { text: s.id || '(ID 없음)', class: s.id ? '' : 'none' }),
-          isBad ? el('span', { class: 'ed-nerr', title: errs.join('\n') || (s.id ? '' : '스텝 ID가 없습니다'), text: '!' }) : null),
+          isBad ? el('span', { class: 'ed-nerr', role: 'img', 'aria-label': '문제 있음', title: errs.join('\n') || (s.id ? '' : '스텝 ID가 없습니다'), text: '!' }) : null),
         el('div', { class: 'ed-n2' }, el('span', { class: s.host ? 'h' : 'h none', text: s.host || '서버 미지정' }),
           s.profile ? el('span', { class: 'ed-ntag', text: '프로파일링' }) : null),
         el('div', { class: 'ed-n3' + (cmdLine ? '' : ' none'), text: cmdLine || '명령어 없음', title: cmdLine }),
@@ -456,6 +463,15 @@ function mount(page, info, st, ctx) {
         if (ui.sel === s && !ui.edge) return;
         ui.sel = s; ui.edge = null;
         drawCanvas(); drawSide();
+      });
+      n.addEventListener('keydown', (e) => {
+        if (e.target !== n || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        if (ui.sel === s && !ui.edge) return;
+        ui.sel = s; ui.edge = null;
+        drawCanvas(); drawSide();
+        const again = stage.querySelector(`.ed-node[data-i="${i}"]`);
+        if (again) again.focus();
       });
       n.querySelector('.ed-port.out').addEventListener('mousedown', (e) => startLink(e, i, tmp));
       return n;
@@ -563,7 +579,20 @@ function mount(page, info, st, ctx) {
   // ---- 오른쪽: 속성 창 · YAML ----
   const side = el('aside', { class: 'ed-side' });
   let sideErr = null, nextBox = null, yamlPre = null;
-  const field = (label, input, help) => el('div', { class: 'ed-f' }, el('label', { class: 'ed-fl', text: label }), input, help ? el('div', { class: 'ed-fh', text: help }) : null);
+  let fieldSeq = 0;
+  const field = (label, input, help) => {
+    // 라벨 ↔ 입력 연결: 안에서 처음 나오는 입력·선택 칸에 id를 준다. 입력이 없는 칸(칩 목록)은 묶음(role=group)에 이름을 단다
+    const ctl = input && input.matches && input.matches('input, select, textarea') ? input : input && input.querySelector && input.querySelector('input, select, textarea');
+    let lab;
+    if (ctl) {
+      lab = el('label', { class: 'ed-fl', text: label });
+      ctl.id ||= `ed-f${++fieldSeq}`; lab.htmlFor = ctl.id;
+    } else {
+      lab = el('span', { class: 'ed-fl', id: `ed-f${++fieldSeq}`, text: label });
+      if (input && input.setAttribute) { input.setAttribute('role', 'group'); input.setAttribute('aria-labelledby', lab.id); }
+    }
+    return el('div', { class: 'ed-f' }, lab, input, help ? el('div', { class: 'ed-fh', text: help }) : null);
+  };
 
   function durField(get, set) {
     const d = parseDur(get());
@@ -586,7 +615,7 @@ function mount(page, info, st, ctx) {
 
   function stepPanel(s) {
     const errs = problemsByStep(ui.errors).get(s.id) || [];
-    sideErr = el('ul', { class: 'ed-serr', hidden: !errs.length }, errs.map((x) => el('li', { text: x })));
+    sideErr = el('ul', { class: 'ed-serr', role: 'alert', hidden: !errs.length }, errs.map((x) => el('li', { text: x })));
     let ref = s.id;
     const idIn = el('input', { type: 'text', class: 'ed-mono', value: s.id, placeholder: '예: load-data', spellcheck: 'false',
       onfocus: () => { ref = s.id; },
@@ -660,7 +689,7 @@ function mount(page, info, st, ctx) {
 
   function flowPanel() {
     const flowErrs = ui.errors.map(parseProblem).filter((p) => !p.step).map((p) => p.text);
-    sideErr = el('ul', { class: 'ed-serr', hidden: !flowErrs.length }, flowErrs.map((x) => el('li', { text: x })));
+    sideErr = el('ul', { class: 'ed-serr', role: 'alert', hidden: !flowErrs.length }, flowErrs.map((x) => el('li', { text: x })));
     const idIn = el('input', { type: 'text', class: 'ed-mono', value: st.id, placeholder: '예: daily-settle', disabled: !st.isNew, spellcheck: 'false',
       oninput: (e) => { st.id = e.target.value.trim(); touch(); drawBar(); } });
     const allBoards = [...new Set([...boards, ...(st.board && !boards.includes(st.board) ? [st.board] : [])])];
@@ -676,7 +705,7 @@ function mount(page, info, st, ctx) {
     const schedBody = el('div', { class: 'ed-sbody' });
     const sum = el('div', { class: 'ed-ssum' });
     nextBox = el('div', { class: 'ed-next' });
-    const seg = el('div', { class: 'ed-seg', role: 'tablist' });
+    const seg = el('div', { class: 'seg ed-seg', role: 'tablist' });
     const setSched = () => { st.schedule = cronFrom(ui.sched); touch(); drawSum(); };
     const drawSeg = () => seg.replaceChildren(...SCHED_MODES.map(([k, t]) => el('button', {
       type: 'button', class: ui.sched.mode === k ? 'on' : '', role: 'tab', 'aria-selected': String(ui.sched.mode === k), text: t,
@@ -734,7 +763,7 @@ function mount(page, info, st, ctx) {
   function drawNext() {
     if (!nextBox) return;
     nextBox.replaceChildren(...(ui.next.length
-      ? ui.next.slice(0, 3).map((t) => el('span', { class: 'ed-tok', text: fmtDT(typeof t === 'number' ? t : Date.parse(t)) }))
+      ? ui.next.slice(0, 3).map((t) => el('span', { class: 'ed-tok', text: fmtDT(typeof t === 'number' ? t : Date.parse(t), { sec: true }) }))
       : [el('span', { class: 'ed-none', text: st.schedule.trim() ? DASH : '수동 실행만' })]));
   }
 
@@ -771,8 +800,8 @@ function mount(page, info, st, ctx) {
     const rows = ui.errors.map((e) => {
       const p = parseProblem(e);
       const known = p.step && st.steps.some((s) => s.id === p.step);
-      return el('li', { class: known ? 'link' : '', onclick: known ? () => selectStepId(p.step) : null },
-        p.step ? el('code', { text: p.step }) : el('span', { class: 'ed-pflow', text: '플로우' }), el('span', { text: p.text }));
+      const inner = [p.step ? el('code', { text: p.step }) : el('span', { class: 'ed-pflow', text: '플로우' }), el('span', { text: p.text })];
+      return el('li', { class: known ? 'link' : '' }, known ? el('button', { type: 'button', class: 'ed-plink', onclick: () => selectStepId(p.step) }, ...inner) : inner);
     });
     probs.replaceChildren(
       el('div', { class: 'ed-probh' }, el('b', { text: ui.errors.length ? `문제 ${ui.errors.length}` : '문제' }), el('span', { class: 'ed-grow' }),
@@ -816,7 +845,7 @@ function mount(page, info, st, ctx) {
     try {
       await api(`/flows/${encodeURIComponent(st.id)}`, { method: 'PUT', body: { flow: buildFlow(st), board: st.board, if_match: st.sha || undefined } });
       ui.dirty = false;
-      toast('저장했습니다');
+      toast('저장했습니다', { level: 'ok' });
       location.hash = hashOfFlow(st.board, st.id);
     } catch (e) {
       saveMsg.hidden = false;
@@ -834,7 +863,8 @@ function mount(page, info, st, ctx) {
   // ---- AI 초안 ----
   api('/assist').then((a) => { ui.assist = a; }).catch(() => { ui.assist = { available: false }; });
   let modal = null;
-  function closeAssist() { if (modal) { modal.remove(); modal = null; } }
+  let untrap = null;
+  function closeAssist() { if (untrap) { untrap(); untrap = null; } if (modal) { modal.remove(); modal = null; } }
   cleanups.push(closeAssist);
   function openAssist() {
     closeAssist();
@@ -863,21 +893,27 @@ function mount(page, info, st, ctx) {
         drawCanvas(); drawSide(); drawProbs();
         touch();
         clearTimeout(timer); validate();
-      } catch (e) { msg.textContent = e instanceof ApiError ? e.error || `오류 ${e.status}` : String(e); }
+      } catch (e) { msg.textContent = errText(e); }
       finally { go.disabled = false; }
     } });
     modal = el('div', { class: 'modal-bg ed-mbg', onclick: (e) => { if (e.target === modal) closeAssist(); } },
-      el('div', { class: 'modal ed-modal', role: 'dialog', 'aria-label': 'AI 초안' },
+      el('div', { class: 'modal ed-modal', role: 'dialog', 'aria-label': 'AI 초안', 'aria-modal': 'true' },
         el('b', { text: 'AI 초안' }),
         el('div', { class: 'ed-fh', text: '하고 싶은 일을 문장으로 쓰면 스텝과 스케줄 초안을 채웁니다. 저장 전에 검토하세요.' }),
         ta, msg,
         el('div', { class: 'btns' }, el('button', { type: 'button', text: '취소', onclick: closeAssist }), go)));
     document.body.append(modal);
+    untrap = trapFocus(modal.firstChild, { onEscape: closeAssist });
     ta.focus();
   }
 
   // ---- 키 ----
   const onKey = (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault();
+      if (!modal && !document.querySelector('.modal-bg') && !saveBtn.disabled) save();
+      return;
+    }
     if (modal) { if (e.key === 'Escape') closeAssist(); return; }
     const t = e.target;
     if (t && (t.closest && t.closest('input, textarea, select, [contenteditable="true"]'))) return;

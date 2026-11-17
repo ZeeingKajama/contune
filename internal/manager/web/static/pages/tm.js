@@ -5,7 +5,7 @@
 import { api, poll } from '../api.js';
 import { lineChart, fmtTime } from '../chart.js';
 import { renderFlame, compareLeaf, verdict } from '../flame.js';
-import { el, esc, badgeHTML, fmtDuration, fmtClock, fmtNum, numUnit, info, shortExec, toast, parseOwner, svcOwner, DASH, LEVEL_TEXT } from '../ui.js';
+import { el, enc, esc, badgeHTML, fmtDuration, fmtClock, fmtNum, numUnit, info, shortExec, toast, parseOwner, svcOwner, stateBox, setTitle, setQuery, DASH, LEVEL_TEXT } from '../ui.js';
 import { TRIGGER_TEXT, hashOfBoard, hashOfFlow } from './batch.js';
 import { splitPrefix } from './biz.js';
 import { can } from '../auth.js';
@@ -13,6 +13,7 @@ import { exitStrip, endText } from './exit.js';
 import { bandsFromPanel, pickPanel } from './panelbands.js';
 import { procChips } from './runs.js';
 import { lineageOf, renderLineage } from '../lineage.js';
+import { parseSpan } from '../ai.js';
 
 const PAD_MIN = 30000, PAD_MAX = 5 * 60000;
 const FIXED = 30000;
@@ -105,12 +106,11 @@ export function rangeText(r, n) {
 export function mdToHTML(s) {
   return esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
 }
-const q = encodeURIComponent;
 export function exportLinks(id, from, to) {
   return [
-    ['지표 CSV', `/api/v1/export/samples?exec_id=${q(id)}&from=${from}&to=${to}`],
-    ['프로파일', `/api/v1/export/profile?exec_id=${q(id)}&from=${from}&to=${to}`],
-    ['로그', `/api/v1/export/logs?exec_id=${q(id)}&from=${from}&to=${to}`],
+    ['지표 CSV', `/api/v1/export/samples?exec_id=${enc(id)}&from=${from}&to=${to}`],
+    ['프로파일', `/api/v1/export/profile?exec_id=${enc(id)}&from=${from}&to=${to}`],
+    ['로그', `/api/v1/export/logs?exec_id=${enc(id)}&from=${from}&to=${to}`],
   ];
 }
 // 패널 타일에서 지표별 임계값 → 트랙 임계선
@@ -142,12 +142,22 @@ export function bandsOf(biz) {
 let timers = [];
 let charts = [];
 
-export async function render(host, params) {
+// 주소의 a·b(“from-to”) 읽기는 ai.js의 parseSpan 하나를 쓴다(서비스 타임머신·원인 추적 링크와 같은 열쇠)
+const spanText = (r) => (r ? `${Math.round(r.from)}-${Math.round(r.to)}` : '');
+const TABS = ['out', 'app', 'ev'];
+
+export async function render(host, params, query = {}) {
   const id = params.id;
   host.classList.add('tm');
   let detail;
-  try { detail = await api('/runs/' + q(id)); } catch (e) {
-    host.append(el('h2', { class: 'sec', text: '타임머신' }), el('p', { class: 'empty', text: '실행을 찾을 수 없음' }));
+  try { detail = await api('/runs/' + enc(id)); } catch (e) {
+    setTitle('실행');
+    if (e && e.status === 404) {
+      host.append(el('h2', { class: 'sec', text: '타임머신' }), el('p', { class: 'empty', text: '실행을 찾을 수 없음' }), el('a', { href: '#runs', text: '실행 이력으로' }));
+    } else {
+      host.append(el('h2', { class: 'sec', text: '타임머신' }),
+        stateBox('error', { text: '실행을 불러오지 못함', e, detail: '서버 연결을 확인한 뒤 다시 시도', retry: () => { host.replaceChildren(); return render(host, params, query); } }));
+    }
     return;
   }
   let hostInfo = null;
@@ -155,7 +165,7 @@ export async function render(host, params) {
   let panels = [];
   try { panels = (await api('/panels')).panels || []; } catch (e) { /* 업무 트랙·임계선 없이 */ }
   let exits = [];
-  try { exits = (await api('/exits?exec_id=' + q(id))).exits || []; } catch (e) { /* 종료 보고 없이 */ }
+  try { exits = (await api('/exits?exec_id=' + enc(id))).exits || []; } catch (e) { /* 종료 보고 없이 */ }
   // 서비스 이름표(/services의 def.title). 응답이 없으면 서비스 ID 그대로
   const svcTitle = new Map();
   if ((detail.procs || []).some((p) => p.service)) {
@@ -163,29 +173,31 @@ export async function render(host, params) {
   }
   const titleOf = (sid) => svcTitle.get(sid) || sid;
 
-  const st = { run: detail.run, live: detail.live, view: null, sel: { a: null, b: null }, pending: null, userRange: false, biz: null, panel: null, hl: null, tab: 'out', residentEnd: lastExit(exits) };
+  const st = { run: detail.run, live: detail.live, view: null, sel: { a: parseSpan(query.a), b: parseSpan(query.b) }, pending: null, userRange: !!(parseSpan(query.a) || parseSpan(query.b)), biz: null, panel: null, hl: null, tab: TABS.includes(query.tab) ? query.tab : 'out', residentEnd: lastExit(exits) };
   st.view = viewRange(st.run, st.live, Date.now(), st.residentEnd);
+  setTitle(`${st.run.flow_id ? st.run.flow_id + ' › ' : ''}${st.run.step_id || shortExec(id)} · 실행`);
+  const syncQuery = () => setQuery({ a: spanText(st.sel.a), b: spanText(st.sel.b), tab: st.tab === 'out' ? '' : st.tab });
 
   const head = el('div', { class: 'tm-head' });
   const kpis = el('div', { class: 'bt-kpis tm-kpis' });
   const toolbar = el('div', { class: 'tm-tools' });
   const movedEl = el('div', { class: 'tm-moved', hidden: true });
   const tracks = el('div', { class: 'tm-tracks' });
-  const procCard = el('section', { class: 'tm-card tm-procs', hidden: true });
+  const procCard = el('section', { class: 'card tm-card tm-procs', hidden: true });
   const chipsEl = el('span', { class: 'tm-pcs' }); // 머리의 기동한 프로세스 칩(실행 이력과 같은 칩)
-  const metricCard = el('section', { class: 'tm-card' },
+  const metricCard = el('section', { class: 'card tm-card' },
     el('div', { class: 'tm-ch' }, el('h3', { class: 'sec', text: '지표' }), info('실행 앞뒤를 실행 길이만큼(30초~5분) 함께 본다. 차트를 끌어 기준(A) 구간을, 한 번 더 끌어 비교(B) 구간을 고르면 아래 프로파일이 두 구간을 비교한다'),
       el('span', { class: 'grow' }), el('span', { class: 'tm-lg' }, el('i', { class: 'mk' }), '실행 시작 · 종료', el('i', { class: 'th' }), '경고 · 위험 기준')),
     toolbar, movedEl, tracks);
   const vEl = el('div', { class: 'tm-verdict' });
   const flames = el('div', { class: 'flame-pair' });
   const cmpEl = el('div', { class: 'tm-cmp' });
-  const profCard = el('section', { class: 'tm-card' },
+  const profCard = el('section', { class: 'card tm-card' },
     el('div', { class: 'tm-ch' }, el('h3', { class: 'sec', text: '프로파일' }), info('CPU 샘플링 프로파일(플레임 그래프). 칸 너비 = 그 함수와 그 아래 호출이 차지한 샘플 비중. 칸을 누르면 확대. 표의 Self 비중은 그 함수 자체에서 머문 비중')),
     vEl, flames, cmpEl);
   const tabsEl = el('div', { class: 'tm-tabs', role: 'tablist' });
   const pane = el('div', { class: 'tm-pane' });
-  const logCard = el('section', { class: 'tm-card tm-logcard' }, tabsEl, pane);
+  const logCard = el('section', { class: 'card tm-card tm-logcard' }, tabsEl, pane);
   // 이 실행의 프로세스 종료 보고가 있으면 맨 위 띠(종료 보고서로 가는 링크)
   const exitBar = exitStrip(exits) || el('div', { hidden: true });
   host.append(exitBar, head, procCard, kpis, metricCard, profCard, logCard);
@@ -198,11 +210,11 @@ export async function render(host, params) {
       : `<span class="tm-dl locked" title="운영 이상만 할 수 있습니다">⤓ ${esc(t)}</span>`)).join('');
     const crumbs = [];
     if (detail.board) crumbs.push(`<a href="${esc(hashOfBoard(detail.board))}">${esc(detail.board)}</a>`);
-    if (r.flow_id) crumbs.push(`<a href="${esc(detail.board ? hashOfFlow(detail.board, r.flow_id) : '#runs?range=7d&flow=' + q(r.flow_id))}">${esc(r.flow_id)}</a>`);
-    head.innerHTML = `<div class="tm-crumb"><a href="#runs">실행 이력</a> › ${crumbs.join(' › ')}</div>
+    if (r.flow_id) crumbs.push(`<a href="${esc(detail.board ? hashOfFlow(detail.board, r.flow_id) : '#runs?range=7d&flow=' + enc(r.flow_id))}">${esc(r.flow_id)}</a>`);
+    head.innerHTML = `<div class="crumb"><a href="#runs">실행 이력</a> › ${crumbs.join(' › ')}</div>
       <div class="tm-title"><h2>${esc(r.step_id || r.exec_id)}</h2>${badgeHTML(r.forced ? 'FORCED' : r.status)}<span class="grow"></span><span class="tm-dls">${links}</span></div>
-      <div class="tm-meta"><span>실행 ID <code class="tm-id" title="눌러서 복사">${esc(r.exec_id)}</code></span>
-      <span>실행 서버 <a href="#host/${esc(q(r.host))}/overview">${esc(r.host || DASH)}</a>${group ? ` <span class="dim">(${esc(group)})</span>` : ''}</span>
+      <div class="tm-meta"><span>실행 ID <button type="button" class="tm-id" title="눌러서 복사">${esc(r.exec_id)}</button></span>
+      <span>실행 서버 <a href="#host/${esc(enc(r.host))}/overview">${esc(r.host || DASH)}</a>${group ? ` <span class="dim">(${esc(group)})</span>` : ''}</span>
       <span>시도 <b>${esc(r.attempt ?? DASH)}</b></span><span>실행 유형 <b>${esc(TRIGGER_TEXT[r.trigger] || r.trigger || DASH)}</b></span></div>`;
     head.querySelector('.tm-id').addEventListener('click', () => { navigator.clipboard?.writeText(r.exec_id).then(() => toast('실행 ID 복사함'), () => {}); });
     head.querySelector('.tm-title .grow').before(chipsEl);
@@ -228,7 +240,7 @@ export async function render(host, params) {
     const mv = movedToService(detail.procs);
     movedEl.hidden = !mv.length;
     if (!mv.length) return;
-    const href = (o) => `#svc/${q(o.service)}?host=${q(o.host)}`;
+    const href = (o) => `#svc/${enc(o.service)}?host=${enc(o.host)}`;
     const names = [...new Set(mv.flatMap((o) => o.comms))].join('·');
     movedEl.replaceChildren(...(mv.length === 1
       ? [`${names}는 서비스 ${titleOf(mv[0].service)}로 옮겨 감 `, el('a', { href: href(mv[0]), text: '→ 서비스 타임머신' })]
@@ -275,9 +287,9 @@ export async function render(host, params) {
     const qs = `from=${Math.round(from)}&to=${Math.round(to)}`;
     const extra = st.biz ? [...new Set(st.biz.flatMap((b) => b.series.map((x) => x[1])))].filter((n) => !n.startsWith('biz.')) : [];
     const [biz, cpu, hcpu] = await Promise.all([
-      api(`/series?exec_id=${q(id)}&name=${['biz.*', ...extra].map(q).join(',')}&${qs}`),
-      api(`/series?exec_id=${q(id)}&name=job.cpu.pct&${qs}`),
-      api(`/series?host=${q(st.run.host)}&name=host.cpu.pct&${qs}`),
+      api(`/series?exec_id=${enc(id)}&name=${['biz.*', ...extra].map(enc).join(',')}&${qs}`),
+      api(`/series?exec_id=${enc(id)}&name=job.cpu.pct&${qs}`),
+      api(`/series?host=${enc(st.run.host)}&name=host.cpu.pct&${qs}`),
     ]);
     // 한 번 정한 업무 패널은 끝까지 쓴다(구간을 옮기다 점이 잠깐 비어도 트랙이 사라지지 않게)
     if (!st.biz) {
@@ -363,7 +375,14 @@ export async function render(host, params) {
     const tr = rows.map((r) => `<tr class="${st.hl === r.leaf ? 'on' : ''}" data-leaf="${esc(r.leaf)}"><td class="fn">${esc(r.leaf)}</td><td>${f(r.pctA)}%</td><td>${f(r.pctB)}%</td><td class="${r.up ? 'up' : 'down'}">${r.up ? '+' : ''}${f(r.diff)}%p</td><td><span class="tm-cbar ${r.up ? 'up' : 'down'}" style="width:${r.bar}%"></span></td></tr>`).join('');
     cmpEl.innerHTML = `<table class="tm-cmp-t"><thead><tr><th>함수</th><th>기준(A) Self CPU 점유율</th><th>비교(B) Self CPU 점유율</th><th>변화</th><th></th></tr></thead><tbody>${tr}</tbody></table>`;
     for (const row of cmpEl.querySelectorAll('tbody tr')) {
-      row.addEventListener('click', () => { st.hl = st.hl === row.dataset.leaf ? null : row.dataset.leaf; drawFlames(); });
+      const fn = row.querySelector('td.fn');
+      const btn = el('button', { type: 'button', class: 'tm-fn', 'aria-pressed': st.hl === row.dataset.leaf ? 'true' : 'false', text: fn.textContent });
+      fn.replaceChildren(btn);
+      row.addEventListener('click', () => {
+        const leaf = row.dataset.leaf;
+        st.hl = st.hl === leaf ? null : leaf;
+        drawFlames().then(() => { [...cmpEl.querySelectorAll('.tm-fn')].find((b) => b.textContent === leaf)?.focus({ preventScroll: true }); });
+      });
     }
   }
 
@@ -390,7 +409,7 @@ export async function render(host, params) {
     const owners = profileOwners(id, detail.procs);
     for (const [name, title, r, cls] of ranges) {
       const ps = await Promise.all(owners.map((o) =>
-        api(`/profile?exec_id=${q(o)}&from=${Math.round(r.from)}&to=${Math.round(r.to)}`).catch(() => null))); // 실패한 주인은 빈 그래프
+        api(`/profile?exec_id=${enc(o)}&from=${Math.round(r.from)}&to=${Math.round(r.to)}`).catch(() => null))); // 실패한 주인은 빈 그래프
       const p = mergeProfiles(ps.filter(Boolean));
       got[name] = p;
       renderFlame(flames.querySelector('.' + cls), { stacks: p.stacks || [], title, highlight: st.hl, subtitle: rangeText(r, p.samples) });
@@ -406,6 +425,7 @@ export async function render(host, params) {
   async function selChanged() {
     for (const c of charts) c.setShades(shades());
     drawTools();
+    syncQuery();
     await drawFlames();
   }
 
@@ -415,7 +435,7 @@ export async function render(host, params) {
     const evs = detail.events || [];
     const tabs = [['out', '실행 로그', null], ['app', '애플리케이션 로그', appLogs.length], ['ev', '상태 변경 이력', evs.length]];
     tabsEl.replaceChildren(...tabs.map(([k, label, n]) => el('button', { type: 'button', role: 'tab', 'aria-selected': st.tab === k ? 'true' : 'false', class: st.tab === k ? 'on' : '',
-      onclick: () => { st.tab = k; drawTabs(); } }, label, n == null ? null : el('span', { class: 'n', text: fmtNum(n) }))));
+      onclick: () => { st.tab = k; syncQuery(); drawTabs(); } }, label, n == null ? null : el('span', { class: 'n', text: fmtNum(n) }))));
     const r = st.run;
     if (st.tab === 'out') {
       const lines = String(r.log_tail || '').split('\n').filter((l, i, a) => l || i < a.length - 1).slice(-200);
@@ -440,7 +460,7 @@ export async function render(host, params) {
     }
   }
   async function loadAppLogs() {
-    try { appLogs = ((await api(`/logs?exec_id=${q(id)}&limit=200`)).events || []).sort((a, b) => a.ts - b.ts); } catch (e) { appLogs = []; }
+    try { appLogs = ((await api(`/logs?exec_id=${enc(id)}&limit=200`)).events || []).sort((a, b) => a.ts - b.ts); } catch (e) { appLogs = []; }
     drawTabs();
   }
 
@@ -452,10 +472,10 @@ export async function render(host, params) {
   // 실행 중이면 2초마다 오른쪽으로 민다. 구간을 고른 뒤에는 밀지 않는다.
   const stop = poll(async () => {
     if (st.userRange) return;
-    try { const d = await api('/runs/' + q(id)); st.run = d.run; st.live = d.live; detail.events = d.events || detail.events; detail.procs = d.procs || detail.procs; drawProcs(); drawMoved(); } catch (e) { return; }
+    try { const d = await api('/runs/' + enc(id)); st.run = d.run; st.live = d.live; detail.events = d.events || detail.events; detail.procs = d.procs || detail.procs; drawProcs(); drawMoved(); } catch (e) { return; }
     let v = viewRange(st.run, st.live, Date.now(), st.residentEnd);
     if (!v.running && st.view.running) { // 상주 프로세스가 방금 끝났으면 종료 보고서의 시각까지 본다
-      try { st.residentEnd = lastExit((await api('/exits?exec_id=' + q(id))).exits); } catch (e) { /* 그대로 */ }
+      try { st.residentEnd = lastExit((await api('/exits?exec_id=' + enc(id))).exits); } catch (e) { /* 그대로 */ }
       v = viewRange(st.run, st.live, Date.now(), st.residentEnd);
     }
     if (!v.running) { if (st.view.running) { st.view = v; updateCharts(await fetchAll()); drawHead(); drawKpis(); } return; }

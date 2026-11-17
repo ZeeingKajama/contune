@@ -2,7 +2,7 @@
 // 넓은 화면(2026-11-11): 카드는 자기 폭을 보고(컨테이너 쿼리) 이상 서버·주목할 배치·세 번째 요인을 더 보이고,
 // 서버 맵 칸은 가장 큰 그룹이 한 줄을 채우도록 늘어나며(30~120px) 넓으면 칸 안에 서버 이름을 쓴다.
 import { api, poll } from '../api.js';
-import { el, esc, fmtNum, fmtClock, relTime, numUnit, badgeHTML, info, EMPTY, DASH, LEVEL_TEXT, parseOwner, shortExec } from '../ui.js';
+import { el, esc, fmtNum, fmtClock, fmtDT, relTime, stateBox, numUnit, badgeHTML, info, EMPTY, DASH, LEVEL_TEXT, parseOwner, shortExec } from '../ui.js';
 import { flowState } from '../tree.js';
 import { groupCmp, setGroupOrder } from '../grouporder.js';
 import { openValue, openLevel, acceptsOf, todoFactors, baselineText, placeText, factorHref, incidentText } from '../riskfmt.js';
@@ -261,8 +261,7 @@ export function whenText(t, now) {
   const day = Math.floor((startOfDay(t) - startOfDay(now)) / 86400000);
   if (day <= 0) return hm;
   if (day === 1) return `내일 ${hm}`;
-  const d = new Date(t);
-  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${hm}`;
+  return fmtDT(t);
 }
 // '실패 · 02:31' · '실행 중 · 03:37~' · '조건 대기 · 03:37~' · '09:00 예정'
 export const BATCH_ROW = { failed: ['✕', '실패'], running: ['▶', '실행 중'], gated: ['⏸', '조건 대기'], plan: ['◷', '예정'] };
@@ -386,8 +385,9 @@ export function limitText(t) {
 export const hasLimit = (t) => t.warn != null || t.crit != null || t.warn_below != null || t.crit_below != null;
 
 // 값 끊김 길이: 45초 · 3분 · 1시간 5분
+// 좁은 칸에 들어가도록 분 단위에서 초를 버린 짧은 꼴이다(ui.fmtDuration은 `3분 12초`). 60초 미만은 fmtDuration과 같은 글(반올림)이 나온다.
 export function durText(ms) {
-  const s = Math.max(0, Math.floor(ms / 1000));
+  const s = Math.max(0, ms < 60000 ? Math.round(ms / 1000) : Math.floor(ms / 1000));
   if (s < 60) return `${s}초`;
   if (s < 3600) return `${Math.floor(s / 60)}분`;
   const m = Math.floor((s % 3600) / 60);
@@ -414,9 +414,10 @@ export const offTip = (t) => `감시 시간 ${t.active || ''}: 이 시간 밖에
 // ---- 화면 ----
 // 카드·맵·이벤트·시간대 렌더러는 사용자 보드의 도메인 위젯(widgets/domain.js, 07)도 쓴다. 바꾸면 보드도 같이 본다.
 const go = (h) => { location.hash = h; };
+// 카드는 div이고 맨 앞의 빈 링크(.dc-go)가 카드 전체를 덮는다. 안의 줄 링크·단추는 그 위에 올라 따로 눌린다(a 안에 a를 두지 않는다).
 function card(cls, title, href, inner) {
-  const c = el('a', { class: `dcard ${cls}`, href });
-  c.innerHTML = `<div class="dc-t">${esc(title)}</div>${inner}`;
+  const c = el('div', { class: `card dcard ${cls}` });
+  c.innerHTML = `<a class="dc-go" href="${esc(href)}" aria-label="${esc(title)}"></a><div class="dc-t">${esc(title)}</div>${inner}`;
   return c;
 }
 
@@ -425,9 +426,10 @@ export function todoHTML(f, i, ctx) {
   const href = factorHref(f, ctx);
   const sub = [baselineText(f), placeText((f.where || [])[0])].filter(Boolean).join(' · ');
   const ack = f.hold ? ' <i class="rk-ack">확인 중</i>' : '';
-  return `<span class="rk-item${href ? ' go' : ''}"${href ? ` data-go="${esc(href)}" title="${esc(f.check || '')}"` : ''}>` +
+  const tag = href ? 'a' : 'span';
+  return `<${tag} class="rk-item${href ? ' go' : ''}"${href ? ` href="${esc(href)}" data-go="${esc(href)}" title="${esc(f.check || '')}"` : ''}>` +
     `<b>${i + 1}</b><span class="rk-t">${esc(f.title)} <span class="rk-v">${esc(fmtNum(f.value))}</span>${ack}</span>` +
-    (sub ? `<span class="rk-s">${esc(sub)}</span>` : '') + '</span>';
+    (sub ? `<span class="rk-s">${esc(sub)}</span>` : '') + `</${tag}>`;
 }
 
 export function riskCard(risk, ctx, now) {
@@ -464,8 +466,8 @@ export function serverCard(hs, alerts) {
   const ph = problemHosts(hs, alerts);
   const more = ph.length > 4 ? `<span class="dl-more">외 ${ph.length - 4}대</span>` : '';
   const list = ph.length ? `<div class="dc-list">${ph.slice(0, 4).map((p) =>
-    `<span class="dl-row" data-go="#host/${esc(encodeURIComponent(p.id))}/overview" title="${esc(`${p.id} · ${p.why}`)}">` +
-    `<i class="dl-m ${esc(p.state)}">${HOST_ROW_MARK[p.state] || '•'}</i><b>${esc(p.id)}</b><span class="dl-t">${esc(p.why)}</span></span>`).join('')}${more}</div>` : '';
+    `<a class="dl-row" href="#host/${esc(encodeURIComponent(p.id))}/overview" data-go="#host/${esc(encodeURIComponent(p.id))}/overview" title="${esc(`${p.id} · ${p.why}`)}">` +
+    `<i class="dl-m ${esc(p.state)}">${HOST_ROW_MARK[p.state] || '•'}</i><b>${esc(p.id)}</b><span class="dl-t">${esc(p.why)}</span></a>`).join('')}${more}</div>` : '';
   const c = card('srv', '서버', '#hosts', `<div class="dc-body">${ring}<div class="dc-side"><span class="dc-cap">이상</span>${side}</div>${list}</div>`);
   goRows(c);
   return c;
@@ -481,8 +483,8 @@ export function batchCard(sum, flows, now) {
   const hl = batchHighlights(flows, now);
   const list = hl.length ? `<div class="dc-list">${hl.map((x) => {
     const txt = batchRowText(x, now);
-    return `<span class="dl-row bh ${x.k}" data-go="${esc(flowHref(x))}" title="${esc(`${x.id} · ${txt}`)}">` +
-      `<i class="dl-m">${BATCH_ROW[x.k][0]}</i><b>${esc(x.id)}</b><span class="dl-t">${esc(txt)}</span></span>`;
+    return `<a class="dl-row bh ${x.k}" href="${esc(flowHref(x))}" data-go="${esc(flowHref(x))}" title="${esc(`${x.id} · ${txt}`)}">` +
+      `<i class="dl-m">${BATCH_ROW[x.k][0]}</i><b>${esc(x.id)}</b><span class="dl-t">${esc(txt)}</span></a>`;
   }).join('')}</div>` : '';
   const c = card('bat', '금일 배치', '#board/', `<div class="dc-body">${ring}<div class="dc-side bks">${rows}</div>${list}</div>`);
   goRows(c);
@@ -495,12 +497,13 @@ export function bizCard(tiles) {
     const v = tileView(t, now, true);
     const val = v.none ? `<span class="empty">${esc(v.st === 'crit' ? DASH : EMPTY.serviceDown)}</span>` : numUnit(t.value, t.unit);
     const mark = v.mark ? `<span class="km ${v.st}" title="${esc(v.level)}">${v.mark}</span>` : '';
+    const lbl = `${t.title} ${v.none ? '값 없음' : `${fmtNum(t.value)}${t.unit ? ' ' + t.unit : ''}`}${v.level ? ' ' + v.level : ''}${v.off ? ' 시간 외' : ''}`;
     const off = v.off ? ` <span class="km-off" title="${esc(offTip(t))}">시간 외</span>` : '';
     const sub = v.stale ? `<div class="kstale">${esc(v.stale)}</div>` : '';
     const bullet = hasLimit(t) && !v.none && !v.off ? bulletSVG(t.value, t.warn, t.crit, v.st, t.warn_below, t.crit_below) : '';
     const tip = hasLimit(t) ? `${t.title} · ${limitText(t)}${t.unit ? ' ' + t.unit : ''}` : t.title;
     const href = tileHash(t) || '#biz/' + encodeURIComponent(t.panel);
-    return `<div class="kpi" data-go="${esc(href)}" title="${esc(tip)}"><div class="kl"><span class="kn">${esc(t.title)}${off}</span><span class="kv">${val}${mark}</span></div>${sub}${bullet}</div>`;
+    return `<a class="kpi" href="${esc(href)}" data-go="${esc(href)}" title="${esc(tip)}" aria-label="${esc(lbl)}"><div class="kl"><span class="kn">${esc(t.title)}${off}</span><span class="kv">${val}${mark}</span></div>${sub}${bullet}</a>`;
   }).join('') : `<div class="empty">${DASH}</div>`;
   const c = card('biz', '업무 지표', '#biz', body);
   c.querySelectorAll('.kpi').forEach((k) => k.addEventListener('click', (e) => { e.preventDefault(); go(k.dataset.go); }));
@@ -511,7 +514,7 @@ export function serverMap(hs) {
   const lg = el('span', { class: 'legend', title: `CPU 0–25 · 25–45 · 45–60 · 60–70 / ${LEVEL_TEXT.warn} · ${LEVEL_TEXT.crit} · ${LEVEL_TEXT.silent}` });
   lg.innerHTML = '<span class="lt">CPU</span><span class="c ok l1"></span><span class="c ok l2"></span><span class="c ok l3"></span><span class="c ok l4"></span>' +
     '<span class="c warn">!</span><span class="c crit">✕</span><span class="c silent">–</span>';
-  const box = el('section', { class: 'dpanel dmap' }, el('div', { class: 'dp-h' }, el('h2', { class: 'sec', text: '서버 맵' }), lg));
+  const box = el('section', { class: 'card dpanel dmap' }, el('div', { class: 'dp-h' }, el('h2', { class: 'sec', text: '서버 맵' }), lg));
   const rows = groupRows(hs);
   box.dataset.cols = String(Math.max(1, ...rows.map((r) => r.hosts.length)));
   for (const r of rows) {
@@ -521,7 +524,7 @@ export function serverMap(hs) {
       const cls = ok ? `c ok l${cpuLevel(h.cpu)}` : `c ${h.state}`;
       const tip = `${h.id} · ${h.group}\nCPU ${fmtNum(h.cpu)}% · 메모리 ${fmtNum(h.mem)}%\n${HOST_LABEL[h.state] || h.state}`;
       const text = ok ? (h.cpu == null ? '' : String(Math.round(h.cpu))) : HOST_MARK[h.state] || '';
-      const a = el('a', { class: cls, href: `#host/${encodeURIComponent(h.id)}/overview`, title: tip, 'data-id': h.id });
+      const a = el('a', { class: cls, href: `#host/${encodeURIComponent(h.id)}/overview`, title: tip, 'data-id': h.id, 'aria-label': `${h.id} ${ok ? (h.cpu == null ? 'CPU 값 없음' : `CPU ${fmtNum(h.cpu)}%`) : ''} ${HOST_LABEL[h.state] || h.state}`.replace(/\s+/g, ' ') });
       a.innerHTML = `<span class="cn">${esc(h.id)}</span><span class="cv">${esc(text)}</span>`;
       cells.append(a);
     }
@@ -539,20 +542,26 @@ export function eventList(alerts, panels, hs, flows) {
     const b = badgeHTML(k, levelCountText(k, c[k], c.open[k]));
     return c.open[k] ? b : `<span class="dp-acked">${b}</span>`;
   }).join('');
-  const box = el('section', { class: 'dpanel dwatch' }, el('div', { class: 'dp-h' }, el('h2', { class: 'sec', text: '실시간 이벤트' }), counts));
+  const box = el('section', { class: 'card dpanel dwatch' }, el('div', { class: 'dp-h' }, el('h2', { class: 'sec', text: '실시간 이벤트' }), counts));
   const list = el('div', { class: 'wl' });
   const now = Date.now();
   for (const a of sortAlerts(alerts)) {
     const acked = isAcked(a);
-    const row = el('a', { class: `wrow ${a.level}${acked ? ' acked' : ''}`, href: alertTarget(a, panels) });
+    // 줄은 div: 링크(a)와 원인 단추(button)를 겹치지 않게 나란히 둔다
+    const row = el('div', { class: `wrow ${a.level}${acked ? ' acked' : ''}` });
     const ack = acked ? ackText(a) : null;
-    row.innerHTML = `<span class="wm ${esc(a.level)}" title="${esc(LEVEL_TEXT[a.level] || a.level)}">${ALERT_MARK[a.level] || '•'}</span><span class="wt">${esc(alertName(a))}</span>` +
+    const link = el('a', { class: 'wlink', href: alertTarget(a, panels) });
+    link.innerHTML = `<span class="wm ${esc(a.level)}" title="${esc(LEVEL_TEXT[a.level] || a.level)}">${ALERT_MARK[a.level] || '•'}</span><span class="wt">${esc(alertName(a))}</span>` +
       `<span class="wr">${esc(alertReason(a))}</span>` +
-      (ack ? `<span class="wa" title="${esc(ack.title)}">${esc(ack.text)}</span>` : '') +
-      (traceable(a) ? `<button type="button" class="wtr" title="이 알림에서 원인 함수까지 추적(대상 식별 → 비교 구간 → 프로파일 비교 → 콜스택)">${AI_MARK} 원인</button>` : '') +
-      `<span class="we">${esc(relTime(a.ts, now))}</span>`;
-    const tb = row.querySelector('.wtr');
-    if (tb) tb.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); openTrace(a.id, { alertHref: (x) => alertTarget(x, panels) }); });
+      (ack ? `<span class="wa" title="${esc(ack.title)}">${esc(ack.text)}</span>` : '');
+    row.append(link);
+    if (traceable(a)) {
+      const tb = el('button', { type: 'button', class: 'wtr', title: '이 알림에서 원인 함수까지 추적(대상 식별 → 비교 구간 → 프로파일 비교 → 콜스택)' });
+      tb.textContent = `${AI_MARK} 원인`;
+      tb.addEventListener('click', () => openTrace(a.id, { alertHref: (x) => alertTarget(x, panels) }));
+      row.append(tb);
+    }
+    row.append(el('span', { class: 'we', text: relTime(a.ts, now) }));
     list.append(row);
   }
   if (!alerts.length) list.append(el('p', { class: 'empty', text: DASH }));
@@ -595,7 +604,7 @@ export function timeline(hours, now, pick, onPick) {
     sum.failed ? el('b', { class: 'bad', text: ` · 실패 ${fmtNum(sum.failed)}` }) : null, ` · 남은 예정 ${fmtNum(sum.plans)}회`);
   const lg = el('span', { class: 'tl-lg' });
   lg.innerHTML = HOUR_KEYS.map((k) => `<span class="${k}"><i></i>${esc(HOUR_TEXT[k])}</span>`).join('');
-  const box = el('section', { class: 'dpanel dtl' },
+  const box = el('section', { class: 'card dpanel dtl' },
     el('div', { class: 'dp-h' }, el('h2', { class: 'sec', text: '시간대별 배치' }), sumEl,
       info('오늘 0~24시. 막대 = 그 시간에 시작한 플로우 수(같은 플로우가 여러 번 돌면 가장 나쁜 상태로 하나), 숫자 = 플로우 수, 점선 = 지금 뒤 남은 예정, 세로선 = 지금. 막대를 누르면 그 시간의 플로우 목록'),
       el('span', { class: 'grow' }), lg),
@@ -635,6 +644,9 @@ export function render(el0, params, query) {
   const main = el('div', { class: 'dash-main' });
   root.append(briefSlot, main);
   el0.append(root);
+  // 첫 그림 전에는 '불러오는 중', 첫 로드가 실패하면 까닭과 다시 시도. 한 번 그린 뒤의 실패는 지난 화면을 두고 위 막대의 갱신 끊김에 맡긴다.
+  let drawn = false, errShown = false;
+  main.append(stateBox('loading'));
   let lastSig = '';
   let pick = null, hoursNow = []; // 시간대별 배치에서 고른 칸(from ms)과 마지막으로 그린 시간 칸
   const onPick = (v) => {
@@ -661,6 +673,7 @@ export function render(el0, params, query) {
     const sig = JSON.stringify([hs, panels, flows, alerts, r, bsum, hours, Math.floor(now / 60000)]);
     if (sig === lastSig && main.childNodes.length) return;
     lastSig = sig;
+    drawn = true; errShown = false;
     hoursNow = hours;
     if (pick != null && !hours.some((o) => o.from === pick)) pick = null; // 날이 바뀌면 고른 칸을 푼다
     const cards = el('div', { class: 'cards' }, riskCard(r, { hosts: h.hosts || [], panels: p.panels || [] }, now), serverCard(hs, alerts), batchCard(bsum, flows, now), bizCard(kpiTiles(panels)));
@@ -668,7 +681,13 @@ export function render(el0, params, query) {
     const lower = el('div', { class: 'lower' }, serverMap(hs), eventList(alerts, panels, hs, flows), timeline(hours, now, pick, onPick));
     main.replaceChildren(cards, lower);
     fitMap(root);
-  }, 2000);
+  }, 2000, {
+    onError: (e) => {
+      if (drawn || errShown) return;
+      errShown = true;
+      main.replaceChildren(stateBox('error', { text: '관제 화면을 불러오지 못함', e, retry: () => render(el0, params, query) }));
+    },
+  });
   // 다시 그릴 때마다 맵이 새로 생기므로 칸 너비는 root의 CSS 변수(--cw)로 둔다. 화면 폭이 바뀌면 다시 잰다.
   if (typeof ResizeObserver !== 'undefined') {
     ro = new ResizeObserver(() => fitMap(root));

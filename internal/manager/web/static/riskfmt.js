@@ -1,13 +1,12 @@
 // 장애 위험도 표시 규칙(관제 카드와 #risk 화면이 함께 쓴다). DOM 없이 호출된다.
 // 계약: docs/cards/R-risk-hold.md — 색·수준은 미확인 지수(open_index), 원래 지수(index)는 함께 보인다.
-import { fmtNum, shortExec, DASH } from './ui.js';
+import { fmtNum, fmtClock, fmtDT, shortExec, DASH } from './ui.js';
 
 // 화면 용어: accept = "이상 없음"(봤고 괜찮다). ack(확인 중)는 서버에 있지만 화면에서 걸지 않는다.
 export const HOLD_TEXT = { ack: '확인 중', accept: '이상 없음' };
 // 업무 지표에서 나온 요인은 서버 상세보다 그 서버가 속한 업무 패널이 먼저다.
 const BIZ_FEATURES = new Set(['queue', 'p99', 'lag', 'log_errors']);
 const inGroup = (group, g) => !!g && (group === g || String(group || '').startsWith(g + '/'));
-const p2 = (n) => String(n).padStart(2, '0');
 
 export const levelOf = (l) => (l === 'crit' ? 'crit' : l === 'warn' ? 'warn' : 'ok');
 // 서버가 새 필드를 아직 주지 않으면 원래 지수로 본다.
@@ -64,8 +63,8 @@ export function factorHref(f, ctx) {
 export function clockText(ts, now = Date.now()) {
   if (!ts) return DASH;
   const d = new Date(ts), n = new Date(now);
-  const hm = `${p2(d.getHours())}:${p2(d.getMinutes())}`;
-  return d.toDateString() === n.toDateString() ? hm : `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${hm}`;
+  const hm = fmtClock(ts).slice(0, 5);
+  return d.toDateString() === n.toDateString() ? hm : fmtDT(ts);
 }
 export const actorText = (a) => String(a || '').replace(/^user:/, '') || DASH;
 // 이상 없음 한 줄: 누가 · 언제까지 · 몇을 넘으면 풀리는지

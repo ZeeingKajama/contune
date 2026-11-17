@@ -3,10 +3,10 @@
 // GitHub Actions 워크플로 실행 목록(상태 아이콘 · 소요 시간), Control-M "Jobs by hour"(시간대별 실행 막대),
 // Airflow 3 태스크 인스턴스 표(상태 · 시도 · 소요 시간).
 import { api, poll } from '../api.js';
-import { el, fmtDuration, fmtNum, shortExec, info, DASH } from '../ui.js';
+import { el, enc, fmtDuration, fmtNum, fmtClock, shortExec, info, stateBox, changed, keepFocus, setQuery, setTitle, fmtDT, DASH } from '../ui.js';
 import { fmtTime, fmtTick, TIME_INCRS } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
-import { fmtDT, runStatusHTML, TRIGGER_TEXT } from './batch.js';
+import { runStatusHTML, TRIGGER_TEXT } from './batch.js';
 import { endText, exitLevel } from './exit.js';
 
 const LIMIT = 1000;
@@ -105,6 +105,11 @@ export function histTicks(first, last, max = 8) {
   }
   return out;
 }
+// 주소의 win(“from-to”) → 구간. 잘못되면 null
+export function parseWin(s) {
+  const m = /^(\d+)-(\d+)$/.exec(String(s || ''));
+  return m && Number(m[2]) > Number(m[1]) ? { from: Number(m[1]), to: Number(m[2]) } : null;
+}
 export function matchText(r, q) {
   if (!q) return true;
   const s = q.toLowerCase();
@@ -121,7 +126,6 @@ export function runTabs(active) {
 export function procChips(list, host, max = 3) {
   const ps = (list || []).filter((p) => !p.leader).sort((a, b) => a.started_at - b.started_at || a.pid - b.pid);
   if (!ps.length) return null;
-  const enc = encodeURIComponent;
   const chip = (p) => {
     const st = !p.ended_at ? 'up' : p.exit_id ? 'down' : 'end';
     const href = p.exit_id ? '#exit/' + enc(p.exit_id) : p.service ? `#svc/${enc(p.service)}?host=${enc(host || '')}` : '';
@@ -152,7 +156,8 @@ let tr = null;
 
 export async function render(host, params, query = {}) {
   const f = { flow: query.flow || '', host: query.host || '', status: parseStatus(query.status), type: query.type || '', q: query.q || '' };
-  let win = null; // 막대를 눌러 고른 시간대 {from, to}
+  let win = parseWin(query.win); // 막대를 눌러 고른 시간대 {from, to}. 주소의 win에 남긴다
+  setTitle('실행 이력');
   let runs = [];
   let exitsBy = new Map(); // exec_id → 종료 보고(끝난 시각 내림차순)
   let procsBy = {}; // exec_id → 기동한 프로세스(축약, /runs procs 맵)
@@ -160,9 +165,10 @@ export async function render(host, params, query = {}) {
   const head = el('div', { class: 'rn-head' }, runTabs('runs'));
   const rangeBar = el('div', { class: 'rn-range' });
   const filters = el('div', { class: 'rn-filters' });
+  const cache = {}; // 주기 갱신에서 바뀔 때만 다시 그리기(ui.changed)
   const kpis = el('div', { class: 'bt-kpis rn-kpis' });
-  const histCard = el('section', { class: 'rn-card rn-histcard' });
-  const listCard = el('section', { class: 'rn-card rn-listcard' });
+  const histCard = el('section', { class: 'card rn-card rn-histcard' });
+  const listCard = el('section', { class: 'card rn-card rn-listcard' });
   host.append(head, rangeBar, filters, kpis, histCard, listCard);
   tr = createTimeRange(rangeBar, { def: '24h' });
 
@@ -171,21 +177,15 @@ export async function render(host, params, query = {}) {
   try { hosts = (await api('/hosts')).hosts || []; } catch (e) { /* 위와 같음 */ }
 
   // 주소: 거르기 값을 고치고 시간 구간(range·from·to)은 그대로 둔다
-  function keepQuery() {
-    const [, qs = ''] = location.hash.slice(1).split('?');
-    const p = new URLSearchParams(qs);
-    for (const k of ['flow', 'host', 'status', 'type', 'q']) { if (f[k]) p.set(k, f[k]); else p.delete(k); }
-    const s = p.toString();
-    history.replaceState(null, '', '#runs' + (s ? '?' + s : ''));
-  }
+  function keepQuery() { setQuery({ flow: f.flow, host: f.host, status: f.status, type: f.type, q: f.q }); }
   const sel = (key, label, opts, server) => {
-    const s = el('select', { 'aria-label': label, 'data-k': key, onchange: () => { f[key] = s.value; keepQuery(); if (server) load(); else draw(); } },
+    const s = el('select', { 'aria-label': label, 'data-k': key, onchange: () => { f[key] = s.value; keepQuery(); if (server) reload(); else redraw(); } },
       opts.map(([v, t]) => el('option', { value: v, text: t, selected: v === f[key] })));
     return el('label', { class: 'bt-filter' }, el('span', { text: label }), s);
   };
   const search = el('input', { type: 'search', class: 'rn-search', placeholder: '플로우 · 스텝 · 실행 ID 검색', value: f.q, 'aria-label': '검색' });
   let timer = null;
-  search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { f.q = search.value.trim(); keepQuery(); draw(); }, 200); });
+  search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { f.q = search.value.trim(); keepQuery(); redraw(); }, 200); });
   filters.append(
     sel('flow', '플로우', [['', '전체'], ...flows.map((x) => [x.id, x.id])], true),
     sel('host', '실행 서버', [['', '전체'], ...hosts.map((h) => [h.id, h.id])], true),
@@ -222,27 +222,34 @@ export async function render(host, params, query = {}) {
     const n = { '': s.total, failed: s.failed, running: s.running, waiting: s.waiting, succeeded: s.succeeded };
     const seg = el('div', { class: 'bt-seg', role: 'group', 'aria-label': '상태' }, STATUS_GROUPS.map(([k, label]) => el('button', {
       type: 'button', class: f.status === k ? 'on' : '', 'aria-pressed': f.status === k ? 'true' : 'false',
-      onclick: () => { f.status = k; keepQuery(); draw(); },
+      onclick: () => { f.status = k; keepQuery(); redraw(); },
     }, k ? el('span', { class: 'dot f-' + k }) : null, label, el('span', { class: 'n', text: fmtNum(n[k]) }))));
     const kids = [seg];
     if (win) kids.push(el('span', { class: 'rn-win' }, `시간대 ${fmtTime(win.from, false)} ~ ${fmtTime(win.to, false).slice(-5)}`,
-      el('button', { type: 'button', text: '✕', title: '시간대 거르기 해제', onclick: () => { win = null; draw(); } })));
+      el('button', { type: 'button', text: '✕', title: '시간대 거르기 해제', onclick: () => { setWin(null); redraw(); } })));
     statusBar.replaceChildren(...kids);
   }
 
+  const HIDE_M = new Set(['실행 유형', '실행 ID']); // 1200px 이하에서 숨김(CSS .hm)
   const KEYS = ['succeeded', 'failed', 'running', 'waiting'];
   const NAMES = { succeeded: '성공', failed: '실패', running: '실행 중', waiting: '대기' };
   function drawHist(rows) {
     const t = tr.current();
     const { size, buckets } = timeBuckets(rows, t.from, t.to);
+    histCard.hidden = !buckets.length;
     if (!buckets.length) { histCard.replaceChildren(); return; }
     const top = Math.max(1, ...buckets.map((b) => KEYS.reduce((a, k) => a + b[k], 0)));
     const cols = buckets.map((b) => {
       const n = KEYS.reduce((a, k) => a + b[k], 0);
       const on = win && win.from === b.from;
-      const col = el('div', { class: 'rb' + (n ? '' : ' z') + (on ? ' on' : ''),
-        title: `${fmtTime(b.from, false)} ~ ${fmtTime(b.to, false).slice(-5)} · ${KEYS.filter((k) => b[k]).map((k) => `${NAMES[k]} ${b[k]}`).join(' · ') || '실행 없음'}`,
-        onclick: () => { if (!n) return; win = on ? null : { from: b.from, to: b.to }; draw(); } });
+      const sameDay = new Date(t.from).toDateString() === new Date(t.to).toDateString();
+      const hm = (ts) => fmtClock(ts).slice(0, 5);
+      const span = `${sameDay ? hm(b.from) : fmtDT(b.from)}~${sameDay ? hm(b.to) : fmtDT(b.to)}`;
+      const what = KEYS.filter((k) => b[k]).map((k) => `${NAMES[k]} ${b[k]}`).join(' · ') || '실행 없음';
+      const col = el('button', { type: 'button', class: 'rb' + (n ? '' : ' z') + (on ? ' on' : ''), disabled: !n,
+        'data-fk': 'h' + b.from, 'aria-label': `${span} ${what}`, 'aria-pressed': on ? 'true' : 'false',
+        title: `${fmtTime(b.from, false)} ~ ${fmtTime(b.to, false).slice(-5)} · ${what}`,
+        onclick: () => { if (!n) return; setWin(on ? null : { from: b.from, to: b.to }); redraw(); } });
       for (const k of KEYS) if (b[k]) col.append(el('i', { class: k, style: `height:${(b[k] / top) * 100}%` }));
       return col;
     });
@@ -258,7 +265,7 @@ export async function render(host, params, query = {}) {
         el('div', { class: 'rn-hm' }, el('div', { class: 'rn-hbars' }, cols), el('div', { class: 'rn-hx' }, ticks))));
   }
 
-  const scroll = el('div', { class: 'rn-scroll' });
+  const scroll = el('div', { class: 'rn-scroll tblwrap' });
   const listHead = el('div', { class: 'rn-ch' });
   listCard.append(listHead, scroll);
 
@@ -280,30 +287,30 @@ export async function render(host, params, query = {}) {
     const med = stepMedians(runs);
     const maxDur = Math.max(1, ...rows.map((r) => durOf(r, now) || 0));
     const t = el('table', { class: 'rn-tbl' });
-    t.append(el('colgroup', {}, ['c-st', 'c-at', 'c-name', 'c-host', 'c-try', 'c-dur', 'c-code', 'c-type', 'c-id'].map((c) => el('col', { class: c }))));
+    t.append(el('colgroup', {}, ['c-st', 'c-at', 'c-name', 'c-host', 'c-try', 'c-dur', 'c-code', 'c-type hm', 'c-id hm'].map((c) => el('col', { class: c }))));
     t.append(el('thead', {}, el('tr', {}, [['상태'], ['시작 시각'], ['플로우 › 스텝'], ['실행 서버'], ['시도', 'num'], ['소요 시간'], ['종료 코드', 'num'], ['실행 유형'], ['실행 ID']]
-      .map(([h, c]) => el('th', { class: c || '', text: h })))));
+      .map(([h, c]) => el('th', { class: (c || '') + (HIDE_M.has(h) ? ' hm' : ''), text: h })))));
     const tb = el('tbody');
-    if (!rows.length) tb.append(el('tr', {}, el('td', { colspan: 9, class: 'empty', text: '조건에 맞는 실행 없음' })));
+    if (!rows.length) tb.append(el('tr', {}, el('td', { colspan: 9, class: 'empty', text: runs.length ? '조건에 맞는 실행 없음' : '이 구간에 실행 없음' })));
     for (const r of rows) {
       const st = el('td'); st.innerHTML = runStatusHTML(r);
-      const tr2 = el('tr', { class: 'click g-' + statusGroup(r.status), tabindex: '0' },
+      const tr2 = el('tr', { class: 'click g-' + statusGroup(r.status), tabindex: '0', 'data-fk': r.exec_id },
         st,
         el('td', { class: 'num at', text: fmtDT(startOf(r)), title: r.started_at ? '' : '예정 시각' }),
         el('td', { class: 'name' }, el('div', { class: 'rn-nm' },
           el('span', { class: 'fs' }, el('a', { href: '#runs?flow=' + encodeURIComponent(r.flow_id), class: 'fl', text: r.flow_id, title: '이 플로우만 보기',
-            onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); f.flow = r.flow_id; keepQuery(); syncSelects(); load(); } }),
+            onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); f.flow = r.flow_id; keepQuery(); syncSelects(); reload(); } }),
           el('span', { class: 'sep', text: ' › ' }), el('span', { class: 'step', text: r.step_id, title: r.step_id })),
           procChips(procsBy[r.exec_id], r.host), exitMark(exitsOnly(r.exec_id)))),
         el('td', { class: 'cut', text: r.host || DASH }),
         el('td', { class: 'num' + (r.attempt > 1 ? ' retry' : ''), text: String(r.attempt ?? DASH) }),
         durCell(r, now, med, maxDur),
         el('td', { class: 'num' + (r.exit_code ? ' bad' : ''), text: r.exit_code == null ? DASH : String(r.exit_code) }),
-        el('td', { text: TRIGGER_TEXT[r.trigger] || r.trigger || DASH }),
-        el('td', { class: 'id', text: shortExec(r.exec_id), title: r.exec_id }));
+        el('td', { class: 'hm', text: TRIGGER_TEXT[r.trigger] || r.trigger || DASH }),
+        el('td', { class: 'id hm', text: shortExec(r.exec_id), title: r.exec_id }));
       const go = () => { location.hash = '#run/' + encodeURIComponent(r.exec_id); };
       tr2.addEventListener('click', go);
-      tr2.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') go(); });
+      tr2.addEventListener('keydown', (ev) => { if (ev.target === tr2 && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); go(); } });
       tb.append(tr2);
     }
     t.append(tb);
@@ -324,7 +331,10 @@ export async function render(host, params, query = {}) {
     drawTable(inW.filter((r) => !groupSts || groupSts.includes(r.status)));
   }
 
+  const setWin = (w) => { win = w; setQuery({ win: w ? `${Math.round(w.from)}-${Math.round(w.to)}` : '' }); };
+  const redraw = () => keepFocus(host, draw);
   let seq = 0;
+  let loaded = false;
   async function load() {
     const my = ++seq;
     const t = tr.current();
@@ -336,6 +346,11 @@ export async function render(host, params, query = {}) {
       api('/exits?' + new URLSearchParams({ from: String(Math.round(t.from)), limit: '1000', ...(f.host ? { host: f.host } : {}) })).catch(() => ({ exits: [] })),
     ]);
     if (my !== seq) return;
+    // 실행 중인 줄은 소요 시간이 흐르므로 5초 칸을 열쇠에 넣는다
+    const tick = (r.runs || []).some((x) => !x.ended_at && x.started_at) ? Math.floor(Date.now() / 5000) : 0;
+    const wasLoaded = loaded;
+    loaded = true;
+    if (wasLoaded && !changed(cache, 'data', [r.runs, r.procs, ex.exits, tick])) return;
     runs = r.runs || [];
     procsBy = r.procs || {};
     exitsBy = new Map();
@@ -344,11 +359,23 @@ export async function render(host, params, query = {}) {
       if (!exitsBy.has(it.exec_id)) exitsBy.set(it.exec_id, []);
       exitsBy.get(it.exec_id).push(it);
     }
-    draw();
+    redraw();
   }
-  tr.onChange(() => { win = null; load().catch(() => {}); });
-  await load().catch(() => {});
-  stopFn = poll(async () => { if (tr.current().live) await load(); }, 5000);
+  // 처음·거르기를 바꾼 뒤의 불러오기: 불러오는 중 → 실패면 까닭과 다시 시도
+  async function reload() {
+    loaded = false;
+    delete cache.data;
+    kpis.replaceChildren(); histCard.replaceChildren(); histCard.hidden = true;
+    scroll.replaceChildren(stateBox('loading'));
+    try { await load(); } catch (e) {
+      if (!loaded || !runs.length) {
+        scroll.replaceChildren(stateBox('error', { text: '실행 이력을 불러오지 못함', e, detail: '서버 연결을 확인한 뒤 다시 시도', retry: reload }));
+      }
+    }
+  }
+  tr.onChange(() => { setWin(null); reload(); });
+  await reload();
+  stopFn = poll(async () => { if (tr.current().live && loaded) await load(); }, 5000);
 }
 export function dispose() {
   if (stopFn) { try { stopFn(); } catch (e) { /* 무시 */ } }

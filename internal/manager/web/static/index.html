@@ -25,9 +25,13 @@
 <link rel="stylesheet" href="css/dwidgets.css">
 <link rel="stylesheet" href="css/flow.css">
 <link rel="stylesheet" href="css/dashedit.css">
+<link rel="stylesheet" href="css/risk.css">
+<link rel="stylesheet" href="css/shell.css">
+<link rel="stylesheet" href="css/quickjump.css">
 </head>
 <body>
 <header id="top">
+  <button id="tree-toggle" type="button" aria-controls="tree" aria-expanded="true" aria-label="트리 여닫기" title="트리 여닫기">&#9776;</button>
   <a class="logo" href="#dashboard">이음</a>
   <nav id="menu">
     <a href="#dashboard" data-m="dashboard">관제</a>
@@ -38,17 +42,21 @@
     <a href="#runs" data-m="runs">실행</a>
   </nav>
   <span class="grow"></span>
-  <a id="bell" href="#alerts" title="알림">&#128276; <b id="bell-n">0</b></a>
-  <button id="theme" type="button" title="테마">&#9680;</button>
+  <button id="qj-open" type="button" title="Ctrl+K">찾기</button>
+  <a id="bell" href="#alerts" title="알림" aria-label="알림 0건">&#128276; <b id="bell-n">0</b></a>
+  <button id="theme" type="button" title="테마" aria-label="테마 바꾸기">&#9680;</button>
   <span id="user" hidden></span>
-  <span id="clock"><span id="clock-t">--:--:--</span> <span id="dot" class="dot ok">&#9679;</span></span>
+  <button id="more" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="user" aria-label="더 보기" title="더 보기">&#8943;</button>
+  <span id="stale" role="status" hidden></span>
+  <span id="clock"><span id="clock-t">--:--:--</span> <span id="dot" class="dot ok" role="img" title="연결됨" aria-label="연결됨">&#9679;</span></span>
 </header>
-<div id="warnbar" hidden>응답 실패</div>
+<div id="warnbar" role="alert" hidden>응답 실패</div>
 <div id="layout">
-  <aside id="tree"></aside>
-  <main id="page"></main>
+  <div id="tree-scrim" hidden></div>
+  <aside id="tree" aria-label="서버·배치판 트리"></aside>
+  <main id="page" tabindex="-1"></main>
 </div>
-<div id="toasts"></div>
+<div id="toasts" role="status" aria-live="polite"></div>
 <script src="vendor/uPlot.iife.min.js"></script>
 <script type="module" src="app.js"></script>
 </body>

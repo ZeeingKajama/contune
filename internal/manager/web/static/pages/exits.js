@@ -2,15 +2,13 @@
 // 실행 메뉴의 둘째 화면(첫째는 실행 이력). 서버 화면의 프로세스 탭, 실행 이력의 종료 표시, 알림, 타임머신 띠도 같은 보고서로 간다.
 // API(계약 §4): GET /exits?host=&from=&to=&limit= — 끝난 시각 내림차순, 규칙 진단 포함.
 import { api, poll } from '../api.js';
-import { el, fmtNum, shortExec, info, DASH } from '../ui.js';
+import { el, enc, fmtNum, shortExec, info, stateBox, changed, keepFocus, setQuery, setTitle, fmtDT, DASH } from '../ui.js';
 import { createTimeRange } from '../timerange.js';
-import { fmtDT } from './batch.js';
 import { runTabs } from './runs.js';
 import { CATEGORY_TEXT, EXIT_GROUPS, exitGroup, exitLevel, endBadge } from './exit.js';
 import { svcHash, serviceTitles } from './dashboard.js';
 
 const LIMIT = 1000;
-const q = encodeURIComponent;
 
 // ---- 순수 함수 ----
 // titles: 서비스 ID → 이름(서비스 이름으로도 찾는다)
@@ -33,11 +31,13 @@ let tr = null;
 export async function render(host, params, query = {}) {
   const f = { host: query.host || '', cat: EXIT_GROUPS.some(([k]) => k === query.cat) ? query.cat : '', q: query.q || '' };
   let items = [];
+  setTitle('종료 보고서');
 
   const head = el('div', { class: 'rn-head' }, runTabs('exits'));
   const rangeBar = el('div', { class: 'rn-range' });
   const filters = el('div', { class: 'rn-filters' });
-  const listCard = el('section', { class: 'rn-card rn-listcard' });
+  const cache = {}; // 바뀔 때만 다시 그리기
+  const listCard = el('section', { class: 'card rn-card rn-listcard' });
   host.append(head, rangeBar, filters, listCard);
   tr = createTimeRange(rangeBar, { def: '24h' });
 
@@ -45,22 +45,16 @@ export async function render(host, params, query = {}) {
   try { hosts = (await api('/hosts')).hosts || []; } catch (e) { /* 거르기 목록 없이 진행 */ }
   const titles = await serviceTitles();
 
-  function keepQuery() {
-    const [, qs = ''] = location.hash.slice(1).split('?');
-    const p = new URLSearchParams(qs);
-    for (const k of ['host', 'cat', 'q']) { if (f[k]) p.set(k, f[k]); else p.delete(k); }
-    const s = p.toString();
-    history.replaceState(null, '', '#exits' + (s ? '?' + s : ''));
-  }
-  const hostSel = el('select', { 'aria-label': '서버', onchange: () => { f.host = hostSel.value; keepQuery(); load(); } },
+  function keepQuery() { setQuery({ host: f.host, cat: f.cat, q: f.q }); }
+  const hostSel = el('select', { 'aria-label': '서버', onchange: () => { f.host = hostSel.value; keepQuery(); reload(); } },
     [['', '전체'], ...hosts.map((h) => [h.id, h.id])].map(([v, t]) => el('option', { value: v, text: t, selected: v === f.host })));
   if (f.host && !hosts.some((h) => h.id === f.host)) hostSel.append(el('option', { value: f.host, text: f.host, selected: true }));
   const search = el('input', { type: 'search', class: 'rn-search', placeholder: '프로세스 · 서비스 · 원인 · 플로우 · pid 검색', value: f.q, 'aria-label': '검색' });
   let timer = null;
-  search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { f.q = search.value.trim(); keepQuery(); draw(); }, 200); });
+  search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { f.q = search.value.trim(); keepQuery(); redraw(); }, 200); });
   filters.append(el('label', { class: 'bt-filter' }, el('span', { text: '서버' }), hostSel), el('span', { class: 'grow' }), search);
 
-  const scroll = el('div', { class: 'rn-scroll' });
+  const scroll = el('div', { class: 'rn-scroll tblwrap' });
   const listHead = el('div', { class: 'rn-ch' });
   listCard.append(listHead, scroll);
 
@@ -68,7 +62,7 @@ export async function render(host, params, query = {}) {
     const n = groupCounts(base);
     const seg = el('div', { class: 'bt-seg', role: 'group', 'aria-label': '원인' }, EXIT_GROUPS.map(([k, label]) => el('button', {
       type: 'button', class: f.cat === k ? 'on' : '', 'aria-pressed': f.cat === k ? 'true' : 'false',
-      onclick: () => { f.cat = k; keepQuery(); draw(); },
+      onclick: () => { f.cat = k; keepQuery(); redraw(); },
     }, k ? el('span', { class: 'dot exg-' + k }) : null, label, el('span', { class: 'n', text: fmtNum(n[k]) }))));
     listHead.replaceChildren(el('div', { class: 'rn-statusbar' }, seg), el('span', { class: 'grow' }),
       info('에이전트가 거둔 프로세스 중 신호로 죽었거나 0이 아닌 코드로 끝난 것, 상주 서비스의 종료. 스텝 프로세스 자신이 코드로 끝난 것은 실행 이력의 종료 코드로 본다'),
@@ -84,12 +78,12 @@ export async function render(host, params, query = {}) {
     for (const x of rows) {
       const lv = exitLevel(x.category, x.resident);
       const run = x.exec_id
-        ? el('a', { href: '#run/' + q(x.exec_id), title: '타임머신에서 이 실행 보기', onclick: (ev) => ev.stopPropagation() },
+        ? el('a', { href: '#run/' + enc(x.exec_id), title: '타임머신에서 이 실행 보기', onclick: (ev) => ev.stopPropagation() },
           x.flow_id ? `${x.flow_id} › ${x.step_id || ''}` : '', el('span', { class: 'dim', text: ` #${shortExec(x.exec_id)}` }))
         : el('span', { class: 'dim', text: '이음 밖 기동' });
-      const row = el('tr', { class: 'click' + (lv ? ' lv-' + lv : ''), tabindex: '0' },
+      const row = el('tr', { class: 'click' + (lv ? ' lv-' + lv : ''), tabindex: '0', 'data-fk': x.id },
         el('td', { class: 'num at', text: fmtDT(x.ended_at) }),
-        el('td', { class: 'cut' }, el('a', { href: '#host/' + q(x.host) + '/proc', class: 'hostl', text: x.host || DASH, title: '이 서버의 프로세스 탭', onclick: (ev) => ev.stopPropagation() })),
+        el('td', { class: 'cut' }, el('a', { href: '#host/' + enc(x.host) + '/proc', class: 'hostl', text: x.host || DASH, title: '이 서버의 프로세스 탭', onclick: (ev) => ev.stopPropagation() })),
         el('td', { class: 'proc' }, el('b', { text: x.comm || DASH }), el('span', { class: 'dim', text: ` · ${x.pid ?? DASH}` }),
           x.resident ? el('span', { class: 'ex-b', text: '상주', title: '스텝이 끝난 뒤에도 살아 있던 서비스' }) : null,
           x.service ? el('a', { class: 'exl-svc', href: svcHash(x.service, x.host, x.ended_at), text: titles[x.service] || x.service, title: '서비스 타임머신에서 끝난 시각 앞뒤 보기', onclick: (ev) => ev.stopPropagation() }) : null),
@@ -97,9 +91,9 @@ export async function render(host, params, query = {}) {
         el('td', { class: 'why', title: x.title || '' }, el('span', { class: 'ex-cat', text: CATEGORY_TEXT[x.category] || x.category || DASH }), ' ', x.title || '',
           x.has_llm ? el('span', { class: 'ex-b', text: 'LLM', title: 'LLM 참고 초안 있음' }) : null),
         el('td', { class: 'cut' }, run));
-      const go = () => { location.hash = '#exit/' + q(x.id); };
+      const go = () => { location.hash = '#exit/' + enc(x.id); };
       row.addEventListener('click', go);
-      row.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') go(); });
+      row.addEventListener('keydown', (ev) => { if (ev.target === row && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); go(); } });
       tb.append(row);
     }
     t.append(tb);
@@ -114,7 +108,9 @@ export async function render(host, params, query = {}) {
     drawTable(base.filter((x) => !f.cat || exitGroup(x.category) === f.cat));
   }
 
+  const redraw = () => keepFocus(listCard, draw);
   let seq = 0;
+  let loaded = false;
   async function load() {
     const my = ++seq;
     const t = tr.current();
@@ -123,12 +119,24 @@ export async function render(host, params, query = {}) {
     if (f.host) p.set('host', f.host);
     const r = await api('/exits?' + p);
     if (my !== seq) return;
+    const wasLoaded = loaded;
+    loaded = true;
+    if (wasLoaded && !changed(cache, 'data', r.exits)) return;
     items = r.exits || [];
-    draw();
+    redraw();
   }
-  tr.onChange(() => { load().catch(() => {}); });
-  await load().catch(() => {});
-  stopFn = poll(async () => { if (tr.current().live) await load(); }, 10000);
+  // 처음·거르기를 바꾼 뒤: 불러오는 중 → 실패면 까닭과 다시 시도
+  async function reload() {
+    loaded = false;
+    delete cache.data;
+    scroll.replaceChildren(stateBox('loading'));
+    try { await load(); } catch (e) {
+      scroll.replaceChildren(stateBox('error', { text: '종료 보고서 목록을 불러오지 못함', e, detail: '서버 연결을 확인한 뒤 다시 시도', retry: reload }));
+    }
+  }
+  tr.onChange(() => { reload(); });
+  await reload();
+  stopFn = poll(async () => { if (tr.current().live && loaded) await load(); }, 10000);
 }
 export function dispose() {
   if (stopFn) { try { stopFn(); } catch (e) { /* 무시 */ } }

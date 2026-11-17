@@ -1,8 +1,9 @@
 // 사용자 보드(07, 카드 W-C): #dash/<id> 보기(머리의 고르기 칸으로 보드 바꾸기, ?tv=1 벽면) · #dashes는 마지막에 본 보드 · mountBoard(편집기 미리보기도 씀).
-import { api, poll } from '../api.js';
+import { api, poll, pollState } from '../api.js';
 import { can } from '../auth.js';
-import { el, info, relTime, fmtNum, DASH, LEVEL_TEXT, openDrawer, closeDrawer } from '../ui.js';
+import { el, info, relTime, fmtNum, fmtClock, DASH, LEVEL_TEXT, openDrawer, closeDrawer } from '../ui.js';
 import { fmtSpan } from '../chart.js';
+import { fitBody } from '../widgets/fit.js';
 import { WIDGETS, SHARED, RANGES, sized, widgetTitle } from '../widgets/index.js';
 import { limitsOf } from '../widgets/metric.js';
 import { tileView, ALERT_MARK } from './dashboard.js';
@@ -10,6 +11,7 @@ import { tileView, ALERT_MARK } from './dashboard.js';
 // ---- 순수 함수 (DOM 없이 호출) ----
 
 // Go 기간('15m' · '1h' · '1h30m' · '168h') → ms. 틀리면 null
+// editor.js의 parseDur('10m' → {n, u}, 칸 고치기용)와 이름만 같고 하는 일이 다르다. 그래서 합치지 않는다
 export function parseDur(s) {
   const m = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(String(s || '').trim());
   if (!m || !(m[1] || m[2] || m[3])) return null;
@@ -158,6 +160,10 @@ export function mountBoard(host, dash, opts = {}) {
   let loaded = false;
   const shared = {}, sharedSig = {};
   const own = new Map();
+  const okAt = new Map(), bad = new Set(); // 위젯 키 → 마지막 성공 시각 · 이번 갱신에 실패한 위젯(지난 값을 두고 있음)
+  const tv = !!document.body.dataset.tv;
+  const bro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver((es) => { for (const x of es) { const f = byBody.get(x.target); if (f) fitBody(f.body, tv); } }) : null;
+  const byBody = new WeakMap();
   let gone = false, busy = false, again = false, dirty = true, timer = 0, pending = null;
 
   function setRangeRaw(from, to, live) {
@@ -239,15 +245,24 @@ export function mountBoard(host, dash, opts = {}) {
     dirty = false;
     const needs = needsOf(its.map((it) => it.w));
     const fetchers = its.filter((it) => WIDGETS[it.w.type] && WIDGETS[it.w.type].fetch);
+    const failed = new Set(); // 이번에 못 가져온 SHARED 키 · 위젯 키
     const [m, sh, ow] = await Promise.all([
       wantMetric ? loadMetric(r).catch((e) => ({ fail: e })) : null,
       Promise.all(needs.map((k) => api(SHARED[k].path).then((x) => SHARED[k].pick(x),
-        () => (SHARED[k].optional ? null : k in shared ? shared[k] : null)))), // 필수 응답이 실패하면 지난 값을 둔다
+        () => { failed.add(k); return SHARED[k].optional ? null : k in shared ? shared[k] : null; }))), // 필수 응답이 실패하면 지난 값을 둔다
       Promise.all(fetchers.map((it) => Promise.resolve()
         .then(() => WIDGETS[it.w.type].fetch(it.w, ctxOf(it, r, now)))
-        .catch(() => (own.has(it.key) ? own.get(it.key) : null)))),
+        .catch(() => { failed.add(it.key); return own.has(it.key) ? own.get(it.key) : null; }))),
     ]);
     if (gone) return;
+    const mFail = !!(m && m.fail);
+    for (const it of its) {
+      const t = WIDGETS[it.w.type];
+      if (!t) continue;
+      const no = t.kind === 'metric' ? (wantMetric && mFail) : (t.needs || []).some((k) => failed.has(k)) || failed.has(it.key);
+      if (no) bad.add(it.key);
+      else if (t.kind !== 'metric' || wantMetric) { bad.delete(it.key); okAt.set(it.key, Date.now()); }
+    }
     if (m) {
       if (!m.fail) metric = m;
       // 잠깐 끊긴 것(응답 없음·5xx)은 지난 값을 그대로 둔다. 보드 없음·검증 오류는 문구로
@@ -276,13 +291,25 @@ export function mountBoard(host, dash, opts = {}) {
     const title = frameTitle(w);
     const lv = el('span', { class: 'dw-lv' });
     const body = el('div', { class: 'dw-b' });
+    const stl = el('span', { class: 'dw-stl', hidden: true });
     const sec = el('section', {
       class: 'dw' + (edit ? ' editing' : ''),
       'data-id': w.id || '', 'data-type': w.type || '',
       style: `grid-column:span ${clamp(w.w, 1, 12, 4)};grid-row:span ${clamp(w.h, 1, 8, 2)}`,
-    }, el('div', { class: 'dw-h' }, el('span', { class: 'dw-t', text: title, title }), lv), body);
-    if (edit) sec.addEventListener('click', () => choose(sec));
-    return { key: it.key, w, def, el: sec, body, lv, lvKey: '', mode: '', inst: null, last: null, msg: null };
+      ...(edit ? { tabindex: '0', role: 'button', 'aria-label': `위젯 고르기 · ${title}` } : {}),
+    }, el('div', { class: 'dw-h' }, el('span', { class: 'dw-t', text: title, title }), stl, lv), body);
+    if (edit) {
+      sec.addEventListener('click', () => choose(sec));
+      sec.addEventListener('keydown', (e) => {
+        if (e.target !== sec || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        choose(sec);
+      });
+    }
+    const f = { key: it.key, w, def, el: sec, body, lv, stl, stlKey: '', lvKey: '', mode: '', inst: null, last: null, msg: null };
+    if (bro) { byBody.set(body, f); bro.observe(body); }
+    if (!tv) body.addEventListener('scroll', () => fitBody(body, false), true);
+    return f;
   }
   function clear(f) {
     if (f.inst && typeof f.inst.dispose === 'function') { try { f.inst.dispose(); } catch (e) { console.error(e); } }
@@ -304,6 +331,17 @@ export function mountBoard(host, dash, opts = {}) {
     f.lv.className = 'dw-lv' + (s ? ' ' + s.st : '');
     f.lv.textContent = s ? `${ALERT_MARK[s.st]} ${LEVEL_TEXT[s.st]}${s.n > 1 ? ' ' + fmtNum(s.n) : ''}` : '';
     f.lv.title = s ? s.tip : '';
+  }
+  // 이 위젯만 값을 못 가져와 지난 값을 둘 때: 머리에 마지막 성공 시각(전체 끊김은 위 막대가 알린다)
+  function paintStale(f) {
+    const on = bad.has(f.key) && !pollState().failing && okAt.has(f.key);
+    const key = on ? String(Math.floor(okAt.get(f.key) / 60000)) : '';
+    if (f.stlKey === key) return;
+    f.stlKey = key;
+    f.stl.hidden = !on;
+    if (!on) { f.stl.replaceChildren(); return; }
+    f.stl.replaceChildren(`${fmtClock(okAt.get(f.key)).slice(0, 5)} 값 `,
+      info('이 위젯만 새 값을 받지 못해 지난 값을 보이고 있습니다. 계속되면 서버 상태를 확인하세요'));
   }
   function sigOf(t, ctx) {
     const parts = [edit ? 1 : 0, Math.floor(ctx.now / 60000), JSON.stringify(ctx.scope)];
@@ -353,14 +391,14 @@ export function mountBoard(host, dash, opts = {}) {
     if (gone) return;
     const its = items();
     const keep = new Set(its.map((it) => it.key));
-    for (const [k, f] of frames) if (!keep.has(k)) { clear(f); f.el.remove(); frames.delete(k); }
+    for (const [k, f] of frames) if (!keep.has(k)) { clear(f); if (bro) bro.unobserve(f.body); f.el.remove(); frames.delete(k); }
     const born = [];
     for (const it of its) {
       const def = JSON.stringify(it.w);
       const old = frames.get(it.key);
       if (old && old.def === def) continue;
       const f = frameOf(it, def);
-      if (old) { clear(old); old.el.replaceWith(f.el); }
+      if (old) { clear(old); if (bro) bro.unobserve(old.body); old.el.replaceWith(f.el); }
       frames.set(it.key, f);
       born.push(f);
     }
@@ -368,7 +406,7 @@ export function mountBoard(host, dash, opts = {}) {
     const want = its.map((it) => frames.get(it.key).el);
     const now0 = [...box.children].filter((c) => c.matches('section.dw'));
     if (want.length !== now0.length || want.some((x, i) => x !== now0[i])) for (const x of want) box.append(x);
-    for (const it of its) fill(frames.get(it.key), it, r, now);
+    for (const it of its) { const f = frames.get(it.key); fill(f, it, r, now); paintStale(f); if (bro == null || f.mode === 'w') fitBody(f.body, tv); }
     if (opts.onFrame) for (const f of born) { try { opts.onFrame(f.el, f.w); } catch (e) { console.error(e); } }
   }
 
@@ -429,6 +467,7 @@ export function mountBoard(host, dash, opts = {}) {
       stopPoll();
       clearTimeout(timer);
       for (const f of frames.values()) clear(f);
+      if (bro) bro.disconnect();
       frames.clear();
       box.remove();
     },
@@ -631,7 +670,7 @@ async function renderPage(host, id, query, my, offs) {
       if (board) board.setRange(state.from, state.to, true);
     }
     function drawRange() {
-      const seg = el('span', { class: 'trseg', role: 'group', 'aria-label': '구간' },
+      const seg = el('span', { class: 'seg trseg', role: 'group', 'aria-label': '구간' },
         ...rangeKeys(dash).map((k) => el('button', {
           type: 'button', class: state.live && state.key === k ? 'on' : '', 'aria-pressed': state.live && state.key === k ? 'true' : 'false',
           text: rangeLabel(k), title: k === defKey ? '보드 기본 구간' : null, onclick: () => liveRange(k),

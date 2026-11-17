@@ -3,7 +3,7 @@
 // Grafana Stat 패널(값 + 추이선 + 임계 색) · Stephen Few 불릿 그래프 · Grafana Explore 로그(레벨별 로그량 막대,
 // 고정 높이 목록, 줄 펼침) · Datadog Log Explorer(패턴 묶기, Live Tail).
 import { api, poll, reloadPanels } from '../api.js';
-import { el, esc, numUnit, fmtNum, relTime, tabBar, shortExec, info, toast, EMPTY, DASH, fmtClock, LEVEL_TEXT, parseOwner } from '../ui.js';
+import { el, esc, numUnit, fmtNum, relTime, tabBar, shortExec, info, toast, stateBox, act, changed, keepFocus, setTitle, setQuery, EMPTY, DASH, fmtClock, LEVEL_TEXT, parseOwner } from '../ui.js';
 import { lineChart, fmtTime, fmtTick } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { hashWith } from '../tree.js';
@@ -192,29 +192,37 @@ export function panelErrorsEl(errors, canFix) {
 
 export async function render(root, params, query) {
   cleanup();
+  setTitle('업무');
   root.append(bizTabs('biz', query));
+  const again = () => { root.replaceChildren(); return render(root, params, query); };
+  const loading = stateBox('loading');
+  root.append(loading);
   svcTitles = await serviceTitles();
   let panels = [], errors = [];
-  try { const r = await api('/panels'); panels = r.panels || []; errors = r.errors || []; } catch (e) { root.append(el('p', { class: 'empty', text: EMPTY.none })); return; }
+  try { const r = await api('/panels'); panels = r.panels || []; errors = r.errors || []; } catch (e) {
+    loading.replaceWith(stateBox('error', { text: '업무 패널을 불러오지 못함', e, retry: again }));
+    return;
+  }
+  loading.remove();
   panels = panels.filter((p) => panelInScope(p, query.g));
-  const again = () => { root.replaceChildren(); return render(root, params, query); };
-  const reload = gate(el('button', { type: 'button', class: 'ghost bz-reload', text: '다시 읽기', title: '손으로 고친 패널 파일을 반영합니다', onclick: async () => {
-    try { const r = await reloadPanels(); toast(`패널 ${r.panels}개`); await again(); } catch (e) { /* 알림은 api가 한다 */ }
-  } }), 'admin');
+  const reload = gate(el('button', { type: 'button', class: 'ghost bz-reload', text: '다시 읽기', title: '손으로 고친 패널 파일을 반영합니다', onclick: (ev) => act(ev.currentTarget, async () => {
+    const r = await reloadPanels(); toast(`패널 ${r.panels}개`); await again();
+  }, { fail: '패널 다시 읽기' }) }), 'admin');
   const errEl = panelErrorsEl(errors, can('admin'));
   if (!panels.length) {
     root.append(el('div', { class: 'bz-tabs tabs' }, el('h2', { class: 'sec', text: '업무' }), reload), ...(errEl ? [errEl] : []), el('p', { class: 'empty', text: EMPTY.none }));
     return;
   }
   const cur = panels.find((p) => p.id === params.panel) || panels[0];
-  const tabs = tabBar(panels.map((p) => ({ id: p.id, label: p.title })), cur.id, (id) => { location.hash = hashWith('biz/' + id, query); });
+  setTitle(`${cur.title} · 업무`);
+  const tabs = tabBar(panels.map((p) => ({ id: p.id, label: p.title })), cur.id, (id) => { location.hash = hashWith('biz/' + id, { g: query.g }); });
   tabs.classList.add('bz-tabs');
   tabs.append(el('span', { class: 'bz-group', text: cur.group }), reload);
   const body = el('div', { class: 'biz' });
   root.append(tabs);
   if (errEl) root.append(errEl);
   root.append(body);
-  draw(body, cur);
+  draw(body, cur, query);
 }
 
 // 타일을 누르면: 서비스(패널 service: 또는 값의 주인)면 그 서버·그 시각의 서비스 타임머신, 값을 보낸 실행이면 실행 타임머신
@@ -225,7 +233,7 @@ function tileEl(t, panel) {
   const v0 = tileView(t);
   const { st, none } = v0;
   const href = tileTarget(t, panel);
-  const card = el('div', { class: `bz-tile ${st}${href ? ' click' : ''}`, 'data-m': t.metric, role: href ? 'link' : null, tabindex: href ? '0' : null });
+  const card = el('div', { class: `bz-tile ${st}${href ? ' click' : ''}`, 'data-m': t.metric, 'data-fk': t.metric, role: href ? 'link' : null, tabindex: href ? '0' : null });
   const head = el('div', { class: 'bz-th' }, el('span', { class: 'bz-tn', text: t.title }));
   if (v0.mark) head.append(el('span', { class: `bz-ts ${st}`, text: `${v0.mark} ${v0.level}` }));
   if (v0.off) head.append(el('span', { class: 'bz-off', text: '시간 외' }, info(offTip(t))));
@@ -251,7 +259,7 @@ function tileEl(t, panel) {
       : '값을 보낸 실행: ' + shortExec(t.exec_id);
     const go = () => { location.hash = href; };
     card.addEventListener('click', go);
-    card.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+    card.addEventListener('keydown', (e) => { if (e.target === card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); go(); } });
   }
   return card;
 }
@@ -268,7 +276,7 @@ function paintSpark(card, points, range, state) {
   }
 }
 
-function draw(body, panel) {
+function draw(body, panel, query = {}) {
   // 시간 구간: 추이선 · 차트 · 로그가 함께 쓴다
   const bar = el('div', { class: 'bz-range' });
   body.append(bar);
@@ -285,9 +293,11 @@ function draw(body, panel) {
   let sparkData = new Map();
   const groups = groupTiles(tiles);
   const onlyOther = groups.length === 1 && groups[0].key === 'other';
+  const seen = {};
   function drawTiles() {
+    if (!changed(seen, 'tiles', [tiles, [...sparkData]])) return;
     const range = tr.current();
-    kpis.replaceChildren(...groupTiles(tiles).map((g) => {
+    keepFocus(kpis, () => kpis.replaceChildren(...groupTiles(tiles).map((g) => {
       const n = Math.min(4, g.tiles.length);
       const box = el('div', { class: 'bz-sig', style: `grid-column:span ${n}` });
       if (!onlyOther) box.append(el('div', { class: 'bz-sig-h' }, el('span', { text: g.label }), info(g.desc)));
@@ -299,7 +309,7 @@ function draw(body, panel) {
       }
       box.append(row);
       return box;
-    }));
+    })));
   }
   drawTiles();
   stops.push(poll(async () => {
@@ -313,8 +323,9 @@ function draw(body, panel) {
   const chartBox = el('div', { class: 'bz-charts' });
   chartSec.append(el('div', { class: 'bz-h' }, el('h3', { class: 'sec', text: '지표 추이' }), info('차트를 끌어 구간을 좁히면 로그도 그 구간으로 바뀐다. 점선은 패널에 정한 경고·위험 값')), chartBox);
   body.append(chartSec);
-  const hosts = (panel.charts || []).map((c) => {
-    const h = el('div', { class: 'bz-card' });
+  const nCharts = (panel.charts || []).length;
+  const hosts = (panel.charts || []).map((c, i) => {
+    const h = el('div', { class: 'card bz-card' + (nCharts % 2 && i === nCharts - 1 ? ' wide' : '') });
     chartBox.append(h);
     return { def: c, host: h, chart: null };
   });
@@ -334,10 +345,15 @@ function draw(body, panel) {
       const chartJobs = hosts.map(async (h) => {
         const resp = await api(seriesPath(panel.group, h.def.metrics, h.def.agg, from, to));
         const ser = toChartSeries(h.def, resp, tiles);
+        // 구간 내내 0이면 낮은 차트로: 위 끝은 임계값(없으면 1)
+        const flat = ser.every((s) => (s.data || []).every((p) => !p[1]));
+        if (h.chart && h.flat !== flat) { h.chart.destroy(); charts = charts.filter((c) => c !== h.chart); h.chart = null; }
         if (h.chart) h.chart.setData(ser, { from, to });
         else {
-          h.chart = lineChart(h.host, { title: h.def.title, unit: h.def.unit, series: ser, sync: SYNC, height: 180, range: { from, to },
-            thresholds: chartThresholds(h.def, tiles), onSelect: (f, t) => tr.select(f, t) });
+          const th = chartThresholds(h.def, tiles);
+          h.flat = flat;
+          h.chart = lineChart(h.host, { title: h.def.title, unit: h.def.unit, series: ser, sync: SYNC, height: flat ? 90 : 180, range: { from, to },
+            ...(flat ? { max: Math.max(1, ...th.map((x) => x.value)) } : {}), thresholds: th, onSelect: (f, t) => tr.select(f, t) });
           charts.push(h.chart);
         }
       });
@@ -348,11 +364,11 @@ function draw(body, panel) {
 
   // ---- 3. 로그 · 활성 알림 ----
   const lower = el('div', { class: 'bz-lower' });
-  const logSec = el('section', { class: 'bz-card bz-logs' });
-  const alSec = el('section', { class: 'bz-card bz-alerts' });
+  const logSec = el('section', { class: 'card bz-card bz-logs' });
+  const alSec = el('section', { class: 'card bz-card bz-alerts' });
   lower.append(logSec, alSec);
   body.append(lower);
-  const logs = logExplorer(logSec, panel);
+  const logs = logExplorer(logSec, panel, query);
 
   tr.onChange(() => { loadSeries().catch(() => {}); logs.reload(); });
   loadSeries().catch(() => {});
@@ -362,12 +378,17 @@ function draw(body, panel) {
 }
 
 // 로그 탐색기: 머리(레벨 칩 · 찾기 · 목록/패턴 · 실시간 추적 · CSV) / 로그량 막대 / 고정 높이 목록
-function logExplorer(sec, panel) {
+function logExplorer(sec, panel, query = {}) {
   const known = ['error,warn', 'error', 'warn'];
   let level = (panel.log_levels || ['error', 'warn']).join(',');
   if (!known.includes(level)) level = 'error,warn';
-  let text = '';
-  let view = 'list';
+  const defLevel = level; // 패널 기본값은 주소에 남기지 않는다
+  if (known.includes(query.level)) level = query.level;
+  let text = query.q || '';
+  let view = query.view === 'pattern' ? 'pattern' : 'list';
+  let loaded = false;
+  let loadErr = null;
+  const seen = {};
   let follow = tr.current().live;
   let rows = [];
   let fresh = new Set();
@@ -377,8 +398,8 @@ function logExplorer(sec, panel) {
 
   const title = el('h3', { class: 'sec', text: '로그' });
   const chips = el('div', { class: 'bt-seg', role: 'group', 'aria-label': '레벨' });
-  const search = el('input', { type: 'search', class: 'bz-search', placeholder: '메시지 검색', 'aria-label': '메시지 검색' });
-  const viewSeg = el('div', { class: 'bt-seg', role: 'group', 'aria-label': '보기' });
+  const search = el('input', { type: 'search', class: 'bz-search', placeholder: '메시지 검색', 'aria-label': '메시지 검색', value: text });
+  const viewSeg = el('div', { class: 'seg', role: 'group', 'aria-label': '보기' }); // 보기 고르기는 구간 단추(.seg), 레벨은 거르기 칩(.bt-seg)
   const live = el('input', { type: 'checkbox', checked: follow });
   const liveLab = el('label', { class: 'bz-follow', title: '새 로그를 계속 받아 위에 붙인다(Live Tail)' }, live, el('span', { text: '실시간 추적' }));
   const csv = el('button', { type: 'button', class: 'ghost', text: 'CSV' });
@@ -390,16 +411,17 @@ function logExplorer(sec, panel) {
   sec.append(head, hist, note, el('div', { class: 'bz-listbox' }, listWrap, newPill));
 
   function drawChips(c) {
+    if (!changed(seen, 'chips', [c, level])) return;
     const items = [['error,warn', '전체', c.error + c.warn], ['error', LOG_LEVELS.error, c.error], ['warn', LOG_LEVELS.warn, c.warn]];
     chips.replaceChildren(...items.map(([id, label, n]) => el('button', {
       type: 'button', class: level === id ? 'on' : '', 'aria-pressed': level === id ? 'true' : 'false',
-      onclick: () => { level = id; pattern = null; drawAll(); },
+      onclick: () => { level = id; pattern = null; setQuery({ level: id === defLevel ? '' : id }); drawAll(); },
     }, id.includes(',') ? null : el('span', { class: `dot l-${id}` }), label, el('span', { class: 'n', text: fmtNum(n) }))));
   }
   function drawViewSeg() {
     viewSeg.replaceChildren(...[['list', '목록'], ['pattern', '패턴']].map(([id, label]) => el('button', {
       type: 'button', class: view === id ? 'on' : '', text: label, 'aria-pressed': view === id ? 'true' : 'false',
-      onclick: () => { view = id; drawViewSeg(); drawList(); },
+      onclick: () => { view = id; setQuery({ view: id === 'pattern' ? 'pattern' : '' }); drawViewSeg(); drawList(); },
     })));
   }
   // 칩 숫자는 레벨 거르기 전 기준이어야 하므로 전체(error,warn)로 받아 화면에서 거른다.
@@ -408,6 +430,7 @@ function logExplorer(sec, panel) {
   function drawHist() {
     const t = tr.current();
     const bs = logBuckets(rows.filter((e) => level === 'error,warn' || e.level === level), t.from, t.to, 60);
+    if (!changed(seen, 'hist', [bs, t.from, t.to])) return;
     const top = Math.max(1, ...bs.map((b) => b.error + b.warn + b.info));
     const cols = bs.map((b) => {
       const n = b.error + b.warn + b.info;
@@ -452,9 +475,8 @@ function logExplorer(sec, panel) {
     t.append(el('colgroup', {}, ['c-ts', 'c-lv', 'c-host', 'c-src', 'c-msg', 'c-ex'].map((c) => el('col', { class: c }))));
     t.append(el('thead', {}, el('tr', {}, ['시각', '레벨', '서버', '소스', '메시지', '실행·서비스'].map((h) => el('th', { text: h })))));
     const tb = el('tbody');
-    if (!list.length) tb.append(el('tr', {}, el('td', { colspan: 6, class: 'empty', text: '이 구간에 로그 없음' })));
     for (const e of list) {
-      const row = el('tr', { class: `lv-${e.level}${fresh.has(e.id) ? ' fresh' : ''}${open.has(e.id) ? ' open' : ''}`, tabindex: '0' },
+      const row = el('tr', { class: `lv-${e.level}${fresh.has(e.id) ? ' fresh' : ''}${open.has(e.id) ? ' open' : ''}`, tabindex: '0', 'data-fk': e.id, 'aria-expanded': open.has(e.id) ? 'true' : 'false' },
         el('td', { class: 'ts num', text: fmtClock(e.ts), title: fmtTime(e.ts) }),
         el('td', {}, el('span', { class: `lvl ${e.level}`, text: LOG_LEVELS[e.level] || e.level })),
         el('td', { class: 'cut', text: e.host || DASH, title: e.host || '' }),
@@ -463,7 +485,7 @@ function logExplorer(sec, panel) {
         el('td', { class: 'cut' }, execLink(e.exec_id, e.ts)));
       const toggle = () => { if (open.has(e.id)) open.delete(e.id); else open.add(e.id); drawList(); };
       row.addEventListener('click', toggle);
-      row.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') toggle(); });
+      row.addEventListener('keydown', (ev) => { if (ev.target === row && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); toggle(); } });
       tb.append(row);
       if (open.has(e.id)) tb.append(detailRow(e));
     }
@@ -477,11 +499,12 @@ function logExplorer(sec, panel) {
     t.append(el('colgroup', {}, ['c-n', 'c-lv', 'c-msg', 'c-src', 'c-last'].map((c) => el('col', { class: c }))));
     t.append(el('thead', {}, el('tr', {}, ['건수', '레벨', '패턴', '소스', '마지막'].map((h) => el('th', { text: h })))));
     const tb = el('tbody');
-    if (!ps.length) tb.append(el('tr', {}, el('td', { colspan: 5, class: 'empty', text: '이 구간에 로그 없음' })));
     for (const p of ps) {
       const tpl = el('td', { class: 'msg' });
       tpl.innerHTML = esc(p.template).replace(/∗/g, '<i class="var">∗</i>');
-      tb.append(el('tr', { class: `lv-${p.level}`, tabindex: '0', title: '이 패턴의 로그만 목록으로 보기', onclick: () => { pattern = p; view = 'list'; drawViewSeg(); drawList(); } },
+      const go = () => { pattern = p; view = 'list'; setQuery({ view: '' }); drawViewSeg(); drawList(); };
+      tb.append(el('tr', { class: `lv-${p.level}`, tabindex: '0', 'data-fk': p.key, title: '이 패턴의 로그만 목록으로 보기', onclick: go,
+        onkeydown: (ev) => { if (ev.target === ev.currentTarget && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); go(); } } },
         el('td', { class: 'cnt' }, el('span', { class: 'cbar', style: `width:${(p.count / max) * 100}%` }), el('b', { class: 'num', text: fmtNum(p.count) })),
         el('td', {}, el('span', { class: `lvl ${p.level}`, text: LOG_LEVELS[p.level] || p.level })),
         tpl,
@@ -504,7 +527,12 @@ function logExplorer(sec, panel) {
   function drawList() {
     const list = visible();
     drawNote();
-    listWrap.replaceChildren(view === 'pattern' ? patternTable(list) : listTable(list));
+    const none = !loaded || loadErr || !list.length;
+    sec.classList.toggle('is-empty', !!none);
+    if (!loaded) listWrap.replaceChildren(stateBox('loading'));
+    else if (loadErr) listWrap.replaceChildren(stateBox('error', { text: '로그를 불러오지 못함', e: loadErr, retry: () => load(true) }));
+    else if (!list.length) listWrap.replaceChildren(stateBox('empty', { text: '이 구간 로그 없음' }));
+    else keepFocus(listWrap, () => listWrap.replaceChildren(view === 'pattern' ? patternTable(list) : listTable(list)));
     unseen = 0;
     newPill.hidden = true;
   }
@@ -514,12 +542,19 @@ function logExplorer(sec, panel) {
   async function load(reset) {
     const my = ++seq;
     const t = tr.current();
-    const r = await api(logPath(panel, 'error,warn', text, t.from, t.to));
+    let r;
+    try { r = await api(logPath(panel, 'error,warn', text, t.from, t.to)); } catch (e) {
+      if (my === seq && reset) { loadErr = e; loaded = true; drawList(); }
+      throw e;
+    }
     if (my !== seq) return;
+    const firstLoad = !loaded;
+    loadErr = null; loaded = true;
     const evs = r.events || [];
-    if (reset) { rows = evs; fresh = new Set(); open = new Set(); drawAll(); listWrap.scrollTop = 0; return; }
+    if (reset) { rows = evs; fresh = new Set(); open = new Set(); seen.chips = seen.hist = null; drawAll(); listWrap.scrollTop = 0; return; }
     const m = mergeLogs(rows, evs, t.from);
     rows = m.rows;
+    if (firstLoad) { drawAll(); return; } // 처음 받는 것이 갱신 주기와 겹쳐 밀린 경우
     drawChips(countLevels(rows));
     drawHist();
     if (!m.fresh.size) return;
@@ -546,19 +581,20 @@ function logExplorer(sec, panel) {
   newPill.addEventListener('click', () => { listWrap.scrollTop = 0; drawList(); });
   listWrap.addEventListener('scroll', () => { if (listWrap.scrollTop <= 4 && !newPill.hidden) drawList(); });
   let timer = null;
-  search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { text = search.value.trim(); pattern = null; reload(); }, 300); });
+  search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { text = search.value.trim(); pattern = null; setQuery({ q: text }); reload(); }, 300); });
   live.addEventListener('change', () => { syncLive(); if (follow) load(false).catch(() => {}); });
   gate(csv, 'operator');
-  csv.addEventListener('click', async () => {
+  csv.addEventListener('click', () => act(csv, async () => {
     const { from, to } = tr.current();
     const out = await api(logPath(panel, level, text, from, to, '/export/logs', 0));
     const blob = new Blob([typeof out === 'string' ? out : JSON.stringify(out)], { type: 'text/csv' });
     const a = el('a', { href: URL.createObjectURL(blob), download: `logs-${panel.id}.csv` });
     document.body.append(a); a.click(); a.remove();
-  });
+  }, { fail: 'CSV 내려받기' }));
   drawViewSeg();
   drawChips({ error: 0, warn: 0, info: 0 });
   syncLive();
+  drawList();
   load(true).catch(() => {});
   stops.push(poll(async () => { if (follow && tr.current().live) await load(false); }, LIVE_MS));
   return { reload };
@@ -571,9 +607,11 @@ function alertPanel(sec, panel) {
   const list = el('div', { class: 'bz-scroll bz-al' });
   sec.append(el('div', { class: 'bz-lh' }, el('h3', { class: 'sec', text: '활성 알림' }), counts, el('span', { class: 'grow' }),
     el('a', { class: 'more', href: '#alerts', text: '전체 알림 →' })), list);
+  const seen = {};
   async function load() {
     const r = await api('/alerts?state=firing');
     const all = bizAlerts(r.alerts, panel.group);
+    if (!changed(seen, 'al', all)) return;
     const n = countAlertLevels(all.map((a) => ({ ...a, level: bizLevel(a) })));
     counts.replaceChildren(...['crit', 'warn'].filter((k) => n[k]).map((k) => {
       const s = ackSuffix(n[k], n.open[k]);
@@ -581,7 +619,7 @@ function alertPanel(sec, panel) {
         s ? el('span', { class: 'lvl-s', text: ' ' + s }) : null);
     }));
     if (!all.length) { list.replaceChildren(el('div', { class: 'bz-allok', text: '✓ 활성 알림 없음' })); return; }
-    list.replaceChildren(...all.map((a) => {
+    keepFocus(list, () => list.replaceChildren(...all.map((a) => {
       const lv = bizLevel(a);
       const own = parseOwner(a.exec_id);
       const target = a.kind === 'service' && a.name ? svcHash(a.name, a.host) : a.exec_id ? ownerHash(a.exec_id) : a.host ? '#host/' + encodeURIComponent(a.host) + '/overview' : null;
@@ -589,13 +627,15 @@ function alertPanel(sec, panel) {
       const ak = isAcked(a) ? ackText(a) : null;
       const ack = ak
         ? el('span', { class: 'acked', text: ak.text, title: ak.title })
-        : gate(el('button', { type: 'button', class: 'ghost', text: '확인', title: '알림 확인(Ack)', onclick: async (ev) => { ev.preventDefault(); ev.stopPropagation(); await api(`/alerts/${a.id}/ack`, { method: 'POST', body: {} }); load().catch(() => {}); } }), 'operator');
-      const row = el(target ? 'a' : 'div', { class: `bz-arow ${lv}${ak ? ' acked' : ''}`, href: target },
-        el('span', { class: `am ${lv}`, text: ALERT_MARK[lv], title: LEVEL_TEXT[lv] }),
-        el('span', { class: 'at' }, el('span', { class: 'amsg', text: a.message }), el('span', { class: 'ameta', text: [where, relTime(a.ts)].filter(Boolean).join(' · ') })),
+        : gate(el('button', { type: 'button', class: 'ghost', text: '확인', title: '알림 확인(Ack)', onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); return act(ev.currentTarget, async () => { await api(`/alerts/${a.id}/ack`, { method: 'POST', body: {} }); window.dispatchEvent(new Event('eum:alerts')); await load(); }, { fail: '알림 확인' }); } }), 'operator');
+      // 줄은 div: 링크(a)와 확인 단추를 겹치지 않게 나란히 둔다
+      const main = [el('span', { class: `am ${lv}`, text: ALERT_MARK[lv], title: LEVEL_TEXT[lv] }),
+        el('span', { class: 'at' }, el('span', { class: 'amsg', text: a.message }), el('span', { class: 'ameta', text: [where, relTime(a.ts)].filter(Boolean).join(' · ') }))];
+      const row = el('div', { class: `bz-arow ${lv}${ak ? ' acked' : ''}${target ? ' go' : ''}`, 'data-fk': a.id },
+        target ? el('a', { class: 'bz-alink', href: target }, main) : el('span', { class: 'bz-alink' }, main),
         ack);
       return row;
-    }));
+    })));
   }
   stops.push(poll(load, 5000));
 }
