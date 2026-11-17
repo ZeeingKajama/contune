@@ -13,6 +13,7 @@ import { exitStrip, endText } from './exit.js';
 import { bandsFromPanel, pickPanel } from './panelbands.js';
 import { procChips } from './runs.js';
 import { lineageOf, renderLineage } from '../lineage.js';
+import { parseSpan } from '../ai.js';
 
 const PAD_MIN = 30000, PAD_MAX = 5 * 60000;
 const FIXED = 30000;
@@ -142,11 +143,7 @@ export function bandsOf(biz) {
 let timers = [];
 let charts = [];
 
-// 주소의 a·b(“from-to”) → 구간. 잘못되면 null(서비스 타임머신과 같은 열쇠)
-export function parseSpan(s) {
-  const m = /^(\d+)-(\d+)$/.exec(String(s || ''));
-  return m && Number(m[2]) > Number(m[1]) ? { from: Number(m[1]), to: Number(m[2]) } : null;
-}
+// 주소의 a·b(“from-to”) 읽기는 ai.js의 parseSpan 하나를 쓴다(서비스 타임머신·원인 추적 링크와 같은 열쇠)
 const spanText = (r) => (r ? `${Math.round(r.from)}-${Math.round(r.to)}` : '');
 const TABS = ['out', 'app', 'ev'];
 

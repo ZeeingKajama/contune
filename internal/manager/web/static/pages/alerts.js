@@ -190,14 +190,6 @@ export function render(root, params, query) {
   poll(load, 5000);
 }
 
-// 위 막대의 종 숫자를 바로 갱신
-async function refreshBell() {
-  try {
-    const r = await api('/alerts?state=firing');
-    const n = (r.alerts || []).filter((a) => !a.acked_at).length;
-    const bn = document.getElementById('bell-n');
-    if (bn) bn.textContent = String(n);
-    document.getElementById('bell')?.classList.toggle('has', n > 0);
-  } catch (e) { /* 다음 주기 */ }
-}
+// 위 막대의 종 숫자·탭 제목의 수를 바로 갱신(app.js가 듣는다)
+function refreshBell() { window.dispatchEvent(new Event('eum:alerts')); }
 export function dispose() {}

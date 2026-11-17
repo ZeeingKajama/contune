@@ -415,9 +415,10 @@ export const offTip = (t) => `감시 시간 ${t.active || ''}: 이 시간 밖에
 // ---- 화면 ----
 // 카드·맵·이벤트·시간대 렌더러는 사용자 보드의 도메인 위젯(widgets/domain.js, 07)도 쓴다. 바꾸면 보드도 같이 본다.
 const go = (h) => { location.hash = h; };
+// 카드는 div이고 맨 앞의 빈 링크(.dc-go)가 카드 전체를 덮는다. 안의 줄 링크·단추는 그 위에 올라 따로 눌린다(a 안에 a를 두지 않는다).
 function card(cls, title, href, inner) {
-  const c = el('a', { class: `dcard ${cls}`, href });
-  c.innerHTML = `<div class="dc-t">${esc(title)}</div>${inner}`;
+  const c = el('div', { class: `dcard ${cls}` });
+  c.innerHTML = `<a class="dc-go" href="${esc(href)}" aria-label="${esc(title)}"></a><div class="dc-t">${esc(title)}</div>${inner}`;
   return c;
 }
 

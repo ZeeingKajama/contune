@@ -116,7 +116,8 @@ table.bz-log { width:100%; border-collapse:collapse; table-layout:fixed; font-si
 .bz-arow { display:flex; align-items:center; gap:8px; padding:7px 8px; border-bottom:1px solid var(--line); border-left:3px solid transparent; text-decoration:none; color:inherit; }
 .bz-arow.crit { border-left-color:var(--crit); } .bz-arow.warn { border-left-color:var(--warn); }
 .bz-arow.acked .amsg { color:var(--t3); }
-a.bz-arow:hover { background:var(--bg); }
+.bz-arow.go:hover { background:var(--bg); }
+.bz-arow .bz-alink { flex:1; min-width:0; display:flex; align-items:center; gap:8px; color:inherit; text-decoration:none; }
 .bz-arow .am { flex:none; font-size:12px; } .am.crit { color:var(--crit); } .am.warn { color:var(--warn); }
 .bz-arow .at { flex:1; min-width:0; display:flex; flex-direction:column; }
 .bz-arow .amsg { font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

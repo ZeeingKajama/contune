@@ -54,8 +54,9 @@ button.danger:hover:not(:disabled) { border-color:var(--crit); }
 
 /* 상태 거르기: 분할 단추 */
 .bt-bar { display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
-.bt-seg { display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:var(--surface); }
-.bt-seg button { border:0; border-radius:0; border-right:1px solid var(--line); padding:4px 12px; display:inline-flex; align-items:center; gap:6px; background:none; color:var(--t2); }
+/* 거르기 칩 묶음(배치·실행·종료 보고서·업무 로그·감사·서버 목록이 같이 쓴다). 좁으면 글자를 꺾지 않고 옆으로 민다 */
+.bt-seg { display:inline-flex; min-width:0; max-width:100%; border:1px solid var(--line); border-radius:6px; overflow-x:auto; overflow-y:hidden; scrollbar-width:thin; background:var(--surface); }
+.bt-seg button { flex:none; white-space:nowrap; border:0; border-radius:0; border-right:1px solid var(--line); padding:4px 12px; display:inline-flex; align-items:center; gap:6px; background:none; color:var(--t2); }
 .bt-seg button:last-child { border-right:0; }
 .bt-seg button:hover { background:var(--bg); color:var(--t1); }
 .bt-seg button.on { background:color-mix(in srgb, var(--accent) 10%, var(--surface)); color:var(--accent); font-weight:600; }
@@ -222,3 +223,11 @@ a.fg-svc:hover { border-color:var(--accent); text-decoration:underline; }
 .bt-hist i.x { display:inline-flex; align-items:center; justify-content:center; font-style:normal; font-size:9px; line-height:1; font-weight:700; color:var(--on-accent, #fff); }
 /* 잠긴 단추의 까닭 */
 .bt-why { margin:6px 0 0; font-size:12px; color:var(--t3); }
+/* 좁은 화면: 플로우 표는 글자를 한 자씩 꺾지 않고 옆으로 민다, 탭은 한 줄로 */
+@media (max-width:700px) {
+  .bt-tablebox { overflow-x:auto; }
+  .bt-tablebox .tbl { min-width:640px; }
+  .bt-tablebox .tbl th, .bt-tablebox .tbl td { white-space:nowrap; }
+  .bt-tabs { overflow-x:auto; overflow-y:hidden; scrollbar-width:thin; }
+  .bt-tabs button { flex:none; white-space:nowrap; padding:8px 10px 7px; }
+}

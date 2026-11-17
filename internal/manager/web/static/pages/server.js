@@ -1,7 +1,7 @@
 // 서버 탭: #hosts 목록, #host/<id>/<tab> 상세. 서브 탭·차트·항목은 /catalog가 정한다.
 // 상세 모양: 머리(서버·상태) → 탭 카드(개요 + 그룹마다 대표 값·추이) → 시간 구간 → 차트 격자.
 import { api, poll } from '../api.js';
-import { el, esc, fmtNum, numUnit, relTime, fmtDuration, fmtDT, badge, table, info, shortExec, openDrawer, toast, svcOwner, parseOwner, stateBox, changed, keepFocus, setTitle, setQuery, EMPTY, DASH, LEVEL_TEXT } from '../ui.js';
+import { el, esc, fmtNum, numUnit, relTime, fmtDuration, fmtDT, badge, table, info, shortExec, openDrawer, toast, svcOwner, parseOwner, stateBox, errReason, changed, keepFocus, setTitle, setQuery, EMPTY, DASH, LEVEL_TEXT } from '../ui.js';
 import { lineChart, unitScale } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { hashWith } from '../tree.js';
@@ -137,7 +137,7 @@ async function renderList(root, query) {
   let hosts = [], now = Date.now(), th = {};
   const sig = {};
   const search = el('input', { type: 'search', class: 'srv-search', placeholder: '서버 이름 찾기', value: q, 'aria-label': '서버 이름 찾기' });
-  const chips = el('div', { class: 'srv-chips', role: 'group', 'aria-label': '상태' });
+  const chips = el('div', { class: 'bt-seg srv-chips', role: 'group', 'aria-label': '상태' }); // 거르기 칩은 배치·실행·종료 보고서와 같은 모양(bt-seg)
   ctl.append(search, chips);
   search.addEventListener('input', () => { q = search.value.trim(); setQuery({ q }); draw(true); });
   const keep = (k, v) => { setQuery({ [k]: v }); };
@@ -145,8 +145,8 @@ async function renderList(root, query) {
   function drawChips(base) {
     const n = (k) => base.filter((h) => stMatch(h, k)).length;
     chips.replaceChildren(...ST_CHIPS.filter(([k]) => !k || k === 'bad' || k === stSel || n(k)).map(([k, label]) =>
-      el('button', { type: 'button', class: 'srv-chip' + (k ? ' ' + k : '') + (stSel === k ? ' on' : ''), 'aria-pressed': String(stSel === k), 'data-fk': 'chip-' + (k || 'all'),
-        onclick: () => { stSel = k; keep('st', k); draw(true); } }, label, ' ', el('span', { class: 'n', text: String(n(k)) }))));
+      el('button', { type: 'button', class: stSel === k ? 'on' : '', 'aria-pressed': String(stSel === k), 'data-fk': 'chip-' + (k || 'all'),
+        onclick: () => { stSel = k; keep('st', k); draw(true); } }, k && k !== 'bad' ? el('span', { class: 'dot s-' + k }) : null, label, el('span', { class: 'n', text: String(n(k)) }))));
   }
   function draw(force) {
     const inScope = hosts.filter((h) => inGroup(h, g));
@@ -176,11 +176,23 @@ async function renderList(root, query) {
       wrap.scrollLeft = sx; wrap.scrollTop = sy;
     });
   }
-  disposers.push(poll(async () => {
+  // 첫 그림 전에는 '불러오는 중', 첫 로드가 실패하면 까닭과 다시 시도. 한 번 그린 뒤의 실패는 지난 표를 두고 위 막대의 갱신 끊김에 맡긴다
+  let loaded = false, errShown = false;
+  wrap.append(stateBox('loading'));
+  const load = async () => {
     const r = await api('/hosts');
     hosts = r.hosts || []; now = r.now || Date.now(); th = r.thresholds || {};
-    draw();
-  }, 5000));
+    const first = !loaded;
+    loaded = true; errShown = false;
+    draw(first);
+  };
+  disposers.push(poll(load, 5000, {
+    onError: (e) => {
+      if (loaded || errShown) return;
+      errShown = true;
+      wrap.replaceChildren(stateBox('error', { text: '서버 목록을 불러오지 못함', e, retry: load }));
+    },
+  }));
 }
 function rateHTML(v, unit) {
   if (v == null) return DASH;
@@ -266,7 +278,12 @@ async function renderHost(root, params, query) {
     } catch (e) { c.val.replaceChildren(el('span', { class: 'empty', text: DASH })); }
   }
   disposers.push(poll(drawCollectCard, 10000));
-  disposers.push(poll(drawHead, 5000));
+  // 머리를 못 받아도 서버 이름과 까닭은 보인다(한 번 받은 뒤의 실패는 위 막대의 갱신 끊김에 맡긴다)
+  let headOk = false;
+  head.replaceChildren(el('h2', { class: 'sec', text: id }));
+  disposers.push(poll(async () => { await drawHead(); headOk = true; }, 5000, {
+    onError: (e) => { if (!headOk) head.replaceChildren(el('h2', { class: 'sec', text: id }), el('span', { class: 'meta', text: `상태를 불러오지 못함 · ${errReason(e)}` })); },
+  }));
 
   // 카드 값: 그룹 대표 지표의 마지막 값과 구간 추이
   const keyNames = [...new Set(groups.flatMap((g) => g.key || []))].join(',');
@@ -423,7 +440,7 @@ function svcChip(service, host, at, auto) {
 const PCOLS = [['프로세스'], ['서비스'], ['기동'], ['CPU 사용률', 'num'], ['RSS', 'num'], ['스레드', 'num'], ['가동 시간', 'num']];
 
 async function drawProc(body, grp, ctx) {
-  const hostBox = el('div'), tblBox = el('div'), detail = el('div', { class: 'srv-detail' }), recent = el('div'), endedBox = el('div');
+  const hostBox = el('div'), tblBox = el('div', { class: 'tblwrap' }), detail = el('div', { class: 'srv-detail' }), recent = el('div', { class: 'tblwrap srv-twrap' }), endedBox = el('div', { class: 'tblwrap srv-twrap' });
   // 지금 떠 있는 프로세스가 먼저, 그다음 끝난 프로세스(종료 보고서), 서버 전체 추이는 그 아래
   body.replaceChildren(
     el('h3', { class: 'sec' }, '실행 중 프로세스 ', info('이음이 띄운 실행의 프로세스와 서비스 규칙에 맞은 프로세스(보안 최소선). CPU 사용률은 코어 1개 = 100%. 머리 줄을 누르면 그 서비스·실행의 차트')),

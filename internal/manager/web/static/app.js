@@ -114,15 +114,18 @@ function initTop() {
   onPollState(applyStale); applyStale(pollState());
   const tick = () => { document.getElementById('clock-t').textContent = fmtClock(Date.now()); };
   tick(); setInterval(tick, 1000);
-  poll(async () => {
+  // 종 숫자·탭 제목의 수. 알림을 확인한 화면은 'eum:alerts' 이벤트를 보내 다음 주기를 기다리지 않고 다시 센다
+  const bell = async () => {
     const r = await api('/alerts?state=firing');
     const n = (r.alerts || []).filter((a) => !a.acked_at).length;
     document.getElementById('bell-n').textContent = String(n);
-    const bell = document.getElementById('bell');
-    bell.classList.toggle('has', n > 0);
-    bell.setAttribute('aria-label', `알림 ${n}건`);
+    const b = document.getElementById('bell');
+    b.classList.toggle('has', n > 0);
+    b.setAttribute('aria-label', `알림 ${n}건`);
     setTitleCount(n);
-  }, 5000, { global: true });
+  };
+  poll(bell, 5000, { global: true });
+  window.addEventListener('eum:alerts', () => { bell().catch(() => { /* 다음 주기 */ }); });
 }
 
 // 로그인 화면을 띄우고, 로그인하면 사용자 칸을 채우고 현재 해시의 화면을 다시 그린다.
@@ -153,7 +156,7 @@ function initTreeToggle() {
   const btn = document.getElementById('tree-toggle'), tree = document.getElementById('tree'), scrim = document.getElementById('tree-scrim');
   const overlay = () => getComputedStyle(tree).position === 'fixed';
   const stored = () => { try { return localStorage.getItem('eum.tree.hidden') === '1'; } catch (e) { return false; } };
-  let drawer = innerWidth > 900 && !stored(); // 서랍 기본값: 900px 이하는 닫힘
+  let drawer = false; // 서랍은 닫힌 채로 시작한다(열린 채면 화면마다 본문을 덮는다)
   let wasOverlay = overlay();
   const sync = () => {
     const ov = overlay();

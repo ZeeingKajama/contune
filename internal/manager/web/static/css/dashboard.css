@@ -203,12 +203,19 @@
   .lower { grid-template-columns:minmax(0,1fr); grid-template-areas:"map" "ev" "tl"; }
   .lower .dwatch .wl { flex:none; max-height:320px; }
 }
+/* 좁은 화면: 카드 둘이 나란히면 위험도 요인이 한두 글자로 잘린다 → 한 줄에 하나 */
+@media (max-width:600px) { .cards { grid-template-columns:minmax(0,1fr); } }
 .km-off { margin-left:6px; font-size:11px; color:var(--t3); border:1px solid var(--line); border-radius:9px; padding:0 6px; }
 .kpi .kstale { font-size:11px; color:var(--crit); font-weight:600; }
 
 
 /* P8: 누를 수 있는 칸을 a·button으로 바꾼 뒤에도 모양은 그대로 */
 a.dl-row, a.kpi, a.rk-item { text-decoration:none; }
+/* 카드 전체를 덮는 링크. 안의 링크·단추·ⓘ는 그 위에서 따로 눌린다 */
+.dcard { position:relative; }
+.dcard > .dc-go { position:absolute; inset:0; border-radius:inherit; }
+.dcard > .dc-go:focus-visible { outline-offset:-1px; }
+.dcard a:not(.dc-go), .dcard button, .dcard .tip { position:relative; z-index:1; }
 .wrow .wlink { display:flex; flex:1; min-width:0; gap:8px; align-items:baseline; color:inherit; text-decoration:none; }
 .wrow .wlink:hover .wt { color:var(--accent); text-decoration:underline; }
 .wrow:focus-within { background:var(--bg); }

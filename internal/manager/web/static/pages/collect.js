@@ -225,7 +225,7 @@ export async function render(root, params, query) {
     if (!hostsOfScope().length) { add.disabled = true; add.title = '이 적용 대상에 걸린 서버가 없어 파일을 찾을 수 없습니다'; }
     srcBox.replaceChildren(
       el('h3', { class: 'sec' }, `로그 파일 · ${scopeName(scope)} `, el('span', { class: 'meta', text: set ? `${set.file} · 여기서 정한 로그 파일 ${set.logs.length}개` : '이 적용 대상의 설정 파일이 아직 없습니다' })),
-      t, el('div', { class: 'cl-addrow' }, add));
+      el('div', { class: 'tblwrap' }, t), el('div', { class: 'cl-addrow' }, add));
   }
   async function del(set, r, btn) {
     if (!set) return;
@@ -266,7 +266,7 @@ export async function render(root, params, query) {
       ],
     });
     stBox.replaceChildren(el('h3', { class: 'sec' }, `적용 상태 · ${scopeName(scope)} `, el('span', { class: 'meta', text: `서버 ${all.length}대` })),
-      el('div', { class: 'cl-sums' }, sum, el('span', { class: 'grow' }), chk), t);
+      el('div', { class: 'cl-sums' }, sum, el('span', { class: 'grow' }), chk), el('div', { class: 'tblwrap' }, t));
   }
 
   function drawHist() {

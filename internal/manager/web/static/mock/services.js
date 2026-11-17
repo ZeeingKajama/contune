@@ -1,7 +1,7 @@
 // 서비스 mock(06, 카드 P-F): GET /services, /services/{id}?from=&to=, POST /services/reload.
 // 응답 모양은 model/service.go의 ServiceItem·ServiceInstance·ServiceDetail·ProcInfo·ServiceEvent(json 이름) 그대로다.
 //
-// 이야기(세계는 c.w = getWorld()로 읽기만):
+// 이야기(세계는 c.w = getWorld()로 읽기만. 서비스 미기동 알림의 확인만 alert.js와 같은 c.w.acks에 쓴다):
 //   체결 matching@match-01  어제 market-open › start-matching이 띄운 matching_svc가 SIGSEGV(종료 보고서 ①),
 //                           그 전날 프로세스는 다음 기동 때 SIGTERM(③), 지금 프로세스는 오늘 start-matching(w.startRun)이 띄움
 //        matching@match-02  이음 밖에서 잠깐 띄웠다 끝난 것(감시 시간 밖이면 off, 안이면 down)
@@ -360,22 +360,33 @@ hook(coreRoutes, 'GET', '/panels', (c, m, orig) => {
 });
 
 // 알림: 서비스 패널 타일·로그 알림의 주인은 서비스 인스턴스, 서비스 미기동(kind service, name = 서비스 ID)
+function serviceAlerts(c) {
+  const extra = [];
+  for (const it of items(c)) {
+    for (const inst of it.instances) {
+      if (inst.state !== 'down' || !it.def.expect) continue;
+      const need = it.def.expect.count || 1;
+      const id = 900 + extra.length, k = c.w.acks.get(id); // 확인(ack)은 다른 알림과 같은 w.acks에 둔다
+      extra.push({ id, ts: (inst.since || c.now) + MIN, kind: 'service', dedup_key: `service:${it.def.id}@${inst.host}:down`, level: 'crit',
+        state: 'firing', host: inst.host, group: it.def.group || '', name: it.def.id, exec_id: '', value: 0, resolved_at: 0, acked_at: k ? k.at : 0, acked_by: k ? k.by : '',
+        message: `${it.def.title}(${inst.host}) 서비스 미기동: 살아 있는 프로세스 ${inst.procs} / ${need}` });
+    }
+  }
+  return extra;
+}
+hook(alertRoutes, 'POST', '/alerts/900/ack', (c, m, orig) => {
+  const id = Number(m[1]);
+  if (id < 900 || !serviceAlerts(c).some((a) => a.id === id)) return orig(c, m);
+  if (!c.w.acks.has(id)) c.w.acks.set(id, { at: c.now, by: 'user:web(127.0.0.1)' });
+  return ok({ ok: true });
+});
 hook(alertRoutes, 'GET', '/alerts', (c, m, orig) => {
   const r = orig(c, m);
   if (r.status !== 200 || !r.body) return r;
   const re = ownerRewrite(c);
   const st = c.q.get('state') || 'firing';
   const kinds = c.q.get('kind') ? c.q.get('kind').split(',') : null;
-  const extra = [];
-  for (const it of items(c)) {
-    for (const inst of it.instances) {
-      if (inst.state !== 'down' || !it.def.expect) continue;
-      const need = it.def.expect.count || 1;
-      extra.push({ id: 900 + extra.length, ts: (inst.since || c.now) + MIN, kind: 'service', dedup_key: `service:${it.def.id}@${inst.host}:down`, level: 'crit',
-        state: 'firing', host: inst.host, group: it.def.group || '', name: it.def.id, exec_id: '', value: 0, resolved_at: 0, acked_at: 0, acked_by: '',
-        message: `${it.def.title}(${inst.host}) 서비스 미기동: 살아 있는 프로세스 ${inst.procs} / ${need}` });
-    }
-  }
+  const extra = serviceAlerts(c);
   const mine = extra.filter((a) => (st === 'all' || a.state === st) && (!kinds || kinds.includes(a.kind)));
   const alerts = [...(r.body.alerts || []).map((a) => ((a.kind === 'tile' || a.kind === 'log') && re.has(a.exec_id) ? { ...a, exec_id: re.get(a.exec_id) } : a)), ...mine];
   return ok({ ...r.body, alerts });

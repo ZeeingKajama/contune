@@ -382,7 +382,8 @@ function logExplorer(sec, panel, query = {}) {
   const known = ['error,warn', 'error', 'warn'];
   let level = (panel.log_levels || ['error', 'warn']).join(',');
   if (!known.includes(level)) level = 'error,warn';
-  if (known.includes(query.lv)) level = query.lv;
+  const defLevel = level; // 패널 기본값은 주소에 남기지 않는다
+  if (known.includes(query.level)) level = query.level;
   let text = query.q || '';
   let view = query.view === 'pattern' ? 'pattern' : 'list';
   let loaded = false;
@@ -414,7 +415,7 @@ function logExplorer(sec, panel, query = {}) {
     const items = [['error,warn', '전체', c.error + c.warn], ['error', LOG_LEVELS.error, c.error], ['warn', LOG_LEVELS.warn, c.warn]];
     chips.replaceChildren(...items.map(([id, label, n]) => el('button', {
       type: 'button', class: level === id ? 'on' : '', 'aria-pressed': level === id ? 'true' : 'false',
-      onclick: () => { level = id; pattern = null; setQuery({ lv: id === 'error,warn' ? '' : id }); drawAll(); },
+      onclick: () => { level = id; pattern = null; setQuery({ level: id === defLevel ? '' : id }); drawAll(); },
     }, id.includes(',') ? null : el('span', { class: `dot l-${id}` }), label, el('span', { class: 'n', text: fmtNum(n) }))));
   }
   function drawViewSeg() {
@@ -626,10 +627,12 @@ function alertPanel(sec, panel) {
       const ak = isAcked(a) ? ackText(a) : null;
       const ack = ak
         ? el('span', { class: 'acked', text: ak.text, title: ak.title })
-        : gate(el('button', { type: 'button', class: 'ghost', text: '확인', title: '알림 확인(Ack)', onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); return act(ev.currentTarget, async () => { await api(`/alerts/${a.id}/ack`, { method: 'POST', body: {} }); await load(); }, { fail: '알림 확인' }); } }), 'operator');
-      const row = el(target ? 'a' : 'div', { class: `bz-arow ${lv}${ak ? ' acked' : ''}`, href: target, 'data-fk': a.id },
-        el('span', { class: `am ${lv}`, text: ALERT_MARK[lv], title: LEVEL_TEXT[lv] }),
-        el('span', { class: 'at' }, el('span', { class: 'amsg', text: a.message }), el('span', { class: 'ameta', text: [where, relTime(a.ts)].filter(Boolean).join(' · ') })),
+        : gate(el('button', { type: 'button', class: 'ghost', text: '확인', title: '알림 확인(Ack)', onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); return act(ev.currentTarget, async () => { await api(`/alerts/${a.id}/ack`, { method: 'POST', body: {} }); window.dispatchEvent(new Event('eum:alerts')); await load(); }, { fail: '알림 확인' }); } }), 'operator');
+      // 줄은 div: 링크(a)와 확인 단추를 겹치지 않게 나란히 둔다
+      const main = [el('span', { class: `am ${lv}`, text: ALERT_MARK[lv], title: LEVEL_TEXT[lv] }),
+        el('span', { class: 'at' }, el('span', { class: 'amsg', text: a.message }), el('span', { class: 'ameta', text: [where, relTime(a.ts)].filter(Boolean).join(' · ') }))];
+      const row = el('div', { class: `bz-arow ${lv}${ak ? ' acked' : ''}${target ? ' go' : ''}`, 'data-fk': a.id },
+        target ? el('a', { class: 'bz-alink', href: target }, main) : el('span', { class: 'bz-alink' }, main),
         ack);
       return row;
     })));

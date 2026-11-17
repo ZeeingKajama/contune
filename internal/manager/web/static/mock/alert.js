@@ -62,10 +62,8 @@ function buildAlerts(c) {
   }
   out.push(mk({ id: 21, ts: w.base - 5 * 3600000, kind: 'host', dedup_key: 'host:match-04', level: 'warn', state: 'resolved', host: 'match-04', group: '매매체결', name: 'host.cpu.pct', value: 72, message: 'match-04 · CPU 72% (경고 70%)', resolved_at: w.base - 5 * 3600000 + 8 * MIN }));
   out.push(mk({ id: 22, ts: w.base - 26 * 3600000, kind: 'tile', dedup_key: 'tile:matching/히스토리 버퍼 사용률', level: 'warn', state: 'resolved', group: '매매체결', name: 'biz.order.histbuf_pct', value: 74, message: '체결 · 히스토리 버퍼 사용률 74% (경고 70%)', resolved_at: w.base - 26 * 3600000 + 12 * MIN }));
-  // 같은 알림이 시도 횟수만 달라 되풀이되는 모양(화면에서 ×N으로 묶임)
-  for (let i = 1; i <= 3; i++) {
-    out.push(mk({ id: 30 + i, ts: now - (4 - i) * 90 * SEC, kind: 'host', dedup_key: `host:ext-04:wr${i}`, level: 'warn', state: 'firing', host: 'ext-04', group: groupOfHost(c, 'ext-04'), name: 'host.log.write', message: `ext-04 · 로그 쓰기 지연 (재시도 ${i})` }));
-  }
+  // 같은 알림이 되풀이되는 모양(화면에서 ×N으로 묶임). 진행 중 묶음은 실행 실패(시도 N)가 이미 보여 주므로
+  // 해소된 것만 더한다(종 숫자·관제 이벤트 수를 시연 이야기 밖으로 늘리지 않게)
   for (let i = 1; i <= 2; i++) {
     out.push(mk({ id: 40 + i, ts: w.base - (7 + i) * 3600000, kind: 'host', dedup_key: `host:match-04:cpu${i}`, level: 'warn', state: 'resolved', host: 'match-04', group: '매매체결', name: 'host.cpu.pct', value: 72, message: 'match-04 · CPU 72% (경고 70%)', resolved_at: w.base - (7 + i) * 3600000 + 6 * MIN }));
   }

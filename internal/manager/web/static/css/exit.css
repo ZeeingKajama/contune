@@ -190,6 +190,9 @@ body[data-page="exits"] #page { display:flex; flex-direction:column; }
 .exl-tbl tr.lv-crit td:first-child { box-shadow:inset 3px 0 0 var(--crit); }
 .exl-tbl tr.lv-warn td:first-child { box-shadow:inset 3px 0 0 var(--warn); }
 .exl-tbl td.proc .ex-b, .exl-tbl td.end .ex-b { margin-left:6px; }
+/* 상주·서비스 칩이 칸을 넘으면 반쯤 잘리지 않게 다음 줄로 내린다 */
+.exl-tbl td.proc { white-space:normal; line-height:1.7; }
+.exl-tbl td.proc .ex-b, .exl-tbl td.proc .exl-svc { display:inline-block; white-space:nowrap; line-height:1.4; }
 .exl-tbl td.why .ex-b { margin-left:6px; }
 .exl-tbl .dim { color:var(--t3); }
 .exl-tbl a { color:var(--t2); text-decoration:none; } .exl-tbl a:hover { color:var(--accent); text-decoration:underline; }

@@ -48,7 +48,7 @@ button:disabled { opacity:.5; cursor:not-allowed; }
 button:disabled:hover { border-color:var(--line); }
 button.primary:disabled:hover { border-color:var(--accent); }
 .cl-addrow { margin-top:8px; }
-.cl-sums { display:flex; align-items:center; gap:14px; margin-bottom:6px; font-size:13px; }
+.cl-sums { display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; margin-bottom:6px; font-size:13px; }
 .cl-sum { display:inline-flex; align-items:center; gap:4px; font-variant-numeric:tabular-nums; }
 .cl-only { font-size:13px; color:var(--t2); cursor:pointer; }
 code.cl-rev.diff { color:var(--warn); }
@@ -193,3 +193,4 @@ button.cw-line.pick:hover { background:color-mix(in srgb, var(--accent) 7%, tran
 button.cw-fbtn { all:unset; box-sizing:border-box; cursor:pointer; color:var(--accent); font:inherit; word-break:break-all; }
 button.cw-fbtn:hover { text-decoration:underline; }
 button.cw-fbtn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.cl-head button { white-space:nowrap; flex:none; }

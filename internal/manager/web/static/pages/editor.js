@@ -581,10 +581,16 @@ function mount(page, info, st, ctx) {
   let sideErr = null, nextBox = null, yamlPre = null;
   let fieldSeq = 0;
   const field = (label, input, help) => {
-    const lab = el('label', { class: 'ed-fl', text: label });
-    // 라벨 ↔ 입력 연결: 안에서 처음 나오는 입력·선택 칸에 id를 준다
+    // 라벨 ↔ 입력 연결: 안에서 처음 나오는 입력·선택 칸에 id를 준다. 입력이 없는 칸(칩 목록)은 묶음(role=group)에 이름을 단다
     const ctl = input && input.matches && input.matches('input, select, textarea') ? input : input && input.querySelector && input.querySelector('input, select, textarea');
-    if (ctl) { ctl.id ||= `ed-f${++fieldSeq}`; lab.htmlFor = ctl.id; }
+    let lab;
+    if (ctl) {
+      lab = el('label', { class: 'ed-fl', text: label });
+      ctl.id ||= `ed-f${++fieldSeq}`; lab.htmlFor = ctl.id;
+    } else {
+      lab = el('span', { class: 'ed-fl', id: `ed-f${++fieldSeq}`, text: label });
+      if (input && input.setAttribute) { input.setAttribute('role', 'group'); input.setAttribute('aria-labelledby', lab.id); }
+    }
     return el('div', { class: 'ed-f' }, lab, input, help ? el('div', { class: 'ed-fh', text: help }) : null);
   };
 
