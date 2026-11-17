@@ -29,8 +29,8 @@ i.running { background:var(--st-running); } i.waiting { background:var(--st-wait
 .rn-hy { display:flex; flex-direction:column; justify-content:space-between; align-items:flex-end; width:24px; flex:none; height:64px; font-size:10px; color:var(--t3); }
 .rn-hm { flex:1; min-width:0; }
 .rn-hbars { display:flex; align-items:flex-end; gap:2px; height:64px; border-bottom:1px solid var(--line); }
-.rn-hbars .rb { flex:1; min-width:0; height:100%; display:flex; flex-direction:column-reverse; gap:1px; cursor:pointer; border-radius:2px 2px 0 0; }
-.rn-hbars .rb.z { cursor:default; }
+.rn-hbars .rb { border:0; padding:0; background:none; font:inherit; flex:1; min-width:0; height:100%; display:flex; flex-direction:column-reverse; gap:1px; cursor:pointer; border-radius:2px 2px 0 0; }
+.rn-hbars .rb.z, .rn-hbars .rb:disabled { cursor:default; opacity:1; }
 .rn-hbars .rb:not(.z):hover { background:var(--bg); }
 .rn-hbars .rb.on { background:color-mix(in srgb, var(--accent) 12%, transparent); outline:1px solid var(--accent); }
 .rn-hbars .rb i { display:block; width:100%; flex:none; border-radius:1px; min-height:2px; }
@@ -72,7 +72,9 @@ table.rn-tbl { width:100%; border-collapse:collapse; table-layout:fixed; font-si
 .rn-tbl .dbar.live { background:var(--st-running); }
 .rn-tbl .dbar.slow { background:var(--warn); }
 .slow-tag { flex:none; font-size:11px; font-weight:700; color:var(--warn); cursor:help; font-variant-numeric:tabular-nums; }
-@media (max-width:1100px) { .rn-tbl col.c-type, .rn-tbl col.c-id { width:0; } }
+/* 1200px 이하: 실행 유형·실행 ID 열을 숨겨 플로우 › 스텝이 잘리지 않게. 700px 이하는 표를 옆으로 민다(.tblwrap) */
+@media (max-width:1200px) { .rn-tbl .hm { display:none; } .rn-tbl col.c-dur { width:132px; } .rn-tbl col.c-st { width:86px; } .rn-tbl col.c-at { width:112px; } .rn-tbl .dtrack { min-width:12px; } }
+@media (max-width:700px) { table.rn-tbl { min-width:620px; } .rn-search { width:100%; } }
 
 /* 실행 메뉴의 두 화면: 실행 이력 · 종료 보고서 */
 .rn-tabs { display:flex; gap:18px; align-items:baseline; margin:0 0 8px; }
@@ -95,3 +97,4 @@ table.rn-tbl { width:100%; border-collapse:collapse; table-layout:fixed; font-si
 .rn-pc.up i { color:var(--ok); } .rn-pc.down { color:var(--crit); border-color:var(--crit); } .rn-pc.end { color:var(--t3); }
 a.rn-pc:hover { text-decoration:underline; border-color:var(--accent); }
 .rn-pcn { font-size:12px; color:var(--t3); }
+.rn-card[hidden] { display:none; }

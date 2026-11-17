@@ -5,7 +5,7 @@
 import { api, poll } from '../api.js';
 import { lineChart, fmtTime } from '../chart.js';
 import { renderFlame, compareLeaf, verdict } from '../flame.js';
-import { el, esc, badgeHTML, fmtDuration, fmtClock, fmtNum, numUnit, info, shortExec, toast, parseOwner, svcOwner, DASH, LEVEL_TEXT } from '../ui.js';
+import { el, esc, badgeHTML, fmtDuration, fmtClock, fmtNum, numUnit, info, shortExec, toast, parseOwner, svcOwner, stateBox, setTitle, setQuery, DASH, LEVEL_TEXT } from '../ui.js';
 import { TRIGGER_TEXT, hashOfBoard, hashOfFlow } from './batch.js';
 import { splitPrefix } from './biz.js';
 import { can } from '../auth.js';
@@ -142,12 +142,26 @@ export function bandsOf(biz) {
 let timers = [];
 let charts = [];
 
-export async function render(host, params) {
+// 주소의 a·b(“from-to”) → 구간. 잘못되면 null(서비스 타임머신과 같은 열쇠)
+export function parseSpan(s) {
+  const m = /^(\d+)-(\d+)$/.exec(String(s || ''));
+  return m && Number(m[2]) > Number(m[1]) ? { from: Number(m[1]), to: Number(m[2]) } : null;
+}
+const spanText = (r) => (r ? `${Math.round(r.from)}-${Math.round(r.to)}` : '');
+const TABS = ['out', 'app', 'ev'];
+
+export async function render(host, params, query = {}) {
   const id = params.id;
   host.classList.add('tm');
   let detail;
   try { detail = await api('/runs/' + q(id)); } catch (e) {
-    host.append(el('h2', { class: 'sec', text: '타임머신' }), el('p', { class: 'empty', text: '실행을 찾을 수 없음' }));
+    setTitle('실행');
+    if (e && e.status === 404) {
+      host.append(el('h2', { class: 'sec', text: '타임머신' }), el('p', { class: 'empty', text: '실행을 찾을 수 없음' }), el('a', { href: '#runs', text: '실행 이력으로' }));
+    } else {
+      host.append(el('h2', { class: 'sec', text: '타임머신' }),
+        stateBox('error', { text: '실행을 불러오지 못함', e, detail: '서버 연결을 확인한 뒤 다시 시도', retry: () => { host.replaceChildren(); return render(host, params, query); } }));
+    }
     return;
   }
   let hostInfo = null;
@@ -163,8 +177,10 @@ export async function render(host, params) {
   }
   const titleOf = (sid) => svcTitle.get(sid) || sid;
 
-  const st = { run: detail.run, live: detail.live, view: null, sel: { a: null, b: null }, pending: null, userRange: false, biz: null, panel: null, hl: null, tab: 'out', residentEnd: lastExit(exits) };
+  const st = { run: detail.run, live: detail.live, view: null, sel: { a: parseSpan(query.a), b: parseSpan(query.b) }, pending: null, userRange: !!(parseSpan(query.a) || parseSpan(query.b)), biz: null, panel: null, hl: null, tab: TABS.includes(query.tab) ? query.tab : 'out', residentEnd: lastExit(exits) };
   st.view = viewRange(st.run, st.live, Date.now(), st.residentEnd);
+  setTitle(`${st.run.flow_id ? st.run.flow_id + ' › ' : ''}${st.run.step_id || shortExec(id)} · 실행`);
+  const syncQuery = () => setQuery({ a: spanText(st.sel.a), b: spanText(st.sel.b), tab: st.tab === 'out' ? '' : st.tab });
 
   const head = el('div', { class: 'tm-head' });
   const kpis = el('div', { class: 'bt-kpis tm-kpis' });
@@ -201,7 +217,7 @@ export async function render(host, params) {
     if (r.flow_id) crumbs.push(`<a href="${esc(detail.board ? hashOfFlow(detail.board, r.flow_id) : '#runs?range=7d&flow=' + q(r.flow_id))}">${esc(r.flow_id)}</a>`);
     head.innerHTML = `<div class="tm-crumb"><a href="#runs">실행 이력</a> › ${crumbs.join(' › ')}</div>
       <div class="tm-title"><h2>${esc(r.step_id || r.exec_id)}</h2>${badgeHTML(r.forced ? 'FORCED' : r.status)}<span class="grow"></span><span class="tm-dls">${links}</span></div>
-      <div class="tm-meta"><span>실행 ID <code class="tm-id" title="눌러서 복사">${esc(r.exec_id)}</code></span>
+      <div class="tm-meta"><span>실행 ID <button type="button" class="tm-id" title="눌러서 복사">${esc(r.exec_id)}</button></span>
       <span>실행 서버 <a href="#host/${esc(q(r.host))}/overview">${esc(r.host || DASH)}</a>${group ? ` <span class="dim">(${esc(group)})</span>` : ''}</span>
       <span>시도 <b>${esc(r.attempt ?? DASH)}</b></span><span>실행 유형 <b>${esc(TRIGGER_TEXT[r.trigger] || r.trigger || DASH)}</b></span></div>`;
     head.querySelector('.tm-id').addEventListener('click', () => { navigator.clipboard?.writeText(r.exec_id).then(() => toast('실행 ID 복사함'), () => {}); });
@@ -363,7 +379,14 @@ export async function render(host, params) {
     const tr = rows.map((r) => `<tr class="${st.hl === r.leaf ? 'on' : ''}" data-leaf="${esc(r.leaf)}"><td class="fn">${esc(r.leaf)}</td><td>${f(r.pctA)}%</td><td>${f(r.pctB)}%</td><td class="${r.up ? 'up' : 'down'}">${r.up ? '+' : ''}${f(r.diff)}%p</td><td><span class="tm-cbar ${r.up ? 'up' : 'down'}" style="width:${r.bar}%"></span></td></tr>`).join('');
     cmpEl.innerHTML = `<table class="tm-cmp-t"><thead><tr><th>함수</th><th>기준(A) Self CPU 점유율</th><th>비교(B) Self CPU 점유율</th><th>변화</th><th></th></tr></thead><tbody>${tr}</tbody></table>`;
     for (const row of cmpEl.querySelectorAll('tbody tr')) {
-      row.addEventListener('click', () => { st.hl = st.hl === row.dataset.leaf ? null : row.dataset.leaf; drawFlames(); });
+      const fn = row.querySelector('td.fn');
+      const btn = el('button', { type: 'button', class: 'tm-fn', 'aria-pressed': st.hl === row.dataset.leaf ? 'true' : 'false', text: fn.textContent });
+      fn.replaceChildren(btn);
+      row.addEventListener('click', () => {
+        const leaf = row.dataset.leaf;
+        st.hl = st.hl === leaf ? null : leaf;
+        drawFlames().then(() => { [...cmpEl.querySelectorAll('.tm-fn')].find((b) => b.textContent === leaf)?.focus({ preventScroll: true }); });
+      });
     }
   }
 
@@ -406,6 +429,7 @@ export async function render(host, params) {
   async function selChanged() {
     for (const c of charts) c.setShades(shades());
     drawTools();
+    syncQuery();
     await drawFlames();
   }
 
@@ -415,7 +439,7 @@ export async function render(host, params) {
     const evs = detail.events || [];
     const tabs = [['out', '실행 로그', null], ['app', '애플리케이션 로그', appLogs.length], ['ev', '상태 변경 이력', evs.length]];
     tabsEl.replaceChildren(...tabs.map(([k, label, n]) => el('button', { type: 'button', role: 'tab', 'aria-selected': st.tab === k ? 'true' : 'false', class: st.tab === k ? 'on' : '',
-      onclick: () => { st.tab = k; drawTabs(); } }, label, n == null ? null : el('span', { class: 'n', text: fmtNum(n) }))));
+      onclick: () => { st.tab = k; syncQuery(); drawTabs(); } }, label, n == null ? null : el('span', { class: 'n', text: fmtNum(n) }))));
     const r = st.run;
     if (st.tab === 'out') {
       const lines = String(r.log_tail || '').split('\n').filter((l, i, a) => l || i < a.length - 1).slice(-200);

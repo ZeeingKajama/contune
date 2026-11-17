@@ -5,6 +5,8 @@
 .flame-svg { display: block; }
 .flame-svg text { font-size: 11px; fill: #1b1f27; pointer-events: none; font-family: ui-monospace, monospace; }
 .flame-cell { cursor: pointer; }
+.flame-cell { outline: none; }
+.flame-cell:focus-visible rect { stroke: var(--accent); stroke-width: 2; }
 .flame-cell:hover rect { stroke: var(--t1); stroke-width: 1; }
 .flame-cell.hl rect { stroke: var(--ab-b, #d6791e); stroke-width: 2; }
 .flame-tip { box-shadow: 0 4px 12px rgba(0,0,0,.12); position: absolute; z-index: 5; pointer-events: none; padding: 4px 8px; font-size: 12px; background: var(--surface); color: var(--t1); border: 1px solid var(--line); border-radius: 4px; white-space: nowrap; }

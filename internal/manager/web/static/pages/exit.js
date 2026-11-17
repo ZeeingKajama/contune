@@ -7,7 +7,7 @@
 // Kubernetes lastState.terminated(종료 사유를 상태로), Windows WER 버킷(원인 분류).
 // API(계약 §4): GET /exits/{id} · /exits/{id}/pack · /exits/{id}/prompt, POST /exits/{id}/analyze, GET /exits?exec_id=
 import { api } from '../api.js';
-import { el, esc, fmtNum, relTime, fmtDuration, fmtClock, shortExec, toast, openDrawer, info, DASH } from '../ui.js';
+import { el, esc, fmtNum, relTime, fmtDuration, fmtClock, shortExec, toast, openDrawer, info, stateBox, setTitle, fmtDT, DASH } from '../ui.js';
 import { can } from '../auth.js';
 import { svcHash, ownerHash, serviceTitles } from './dashboard.js';
 
@@ -171,12 +171,7 @@ export function fmtBytes(n) {
   while (v >= 1024 && k < u.length - 1) { v /= 1024; k++; }
   return `${fmtNum(v, k ? 1 : 0)}${u[k]}`;
 }
-const p2 = (n) => String(n).padStart(2, '0');
-export function fmtWhen(ts) {
-  if (!ts) return DASH;
-  const d = new Date(ts);
-  return `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
-}
+export function fmtWhen(ts) { return fmtDT(ts, { sec: true }); }
 // 코드 자리 글: demo/matching_svc.c:117–119 (한 줄이면 :142)
 export function refText(r) {
   const s = Number(r && r.start) || 0, e = Number(r && r.end) || 0;
@@ -274,8 +269,10 @@ export async function render(root, params) {
   root.append(page);
   let d;
   try { d = await api('/exits/' + q(id)); } catch (e) {
+    setTitle('종료 보고서');
     page.append(el('h2', { class: 'ex-h2', text: '종료 보고서' }),
-      el('p', { class: 'empty', text: e.status === 404 ? '종료 보고서를 찾을 수 없음' : '종료 보고서를 불러오지 못함' }),
+      e && e.status === 404 ? el('p', { class: 'empty', text: '종료 보고서를 찾을 수 없음' })
+        : stateBox('error', { text: '종료 보고서를 불러오지 못함', e, detail: '서버 연결을 확인한 뒤 다시 시도', retry: () => { root.replaceChildren(); return render(root, params); } }),
       el('a', { href: '#exits', text: '종료 보고서 목록으로' }));
     return;
   }
@@ -296,6 +293,7 @@ export async function render(root, params) {
   if (code.length) have.add('source');
   const rule = d.rule || { category: 'unknown', title: '원인 미상', confidence: 'low', by: 'rule', evidence_ids: [] };
   const level = exitLevel(rule.category, rep.resident);
+  setTitle(`${reportTitle(rule, rep)} · 종료 보고서`);
   const top = frames[0] && frames[0].func && frames[0].func !== '??' ? frames[0] : null;
   const crashFunc = top ? top.func : '';
   const st = { fold: true, opened: new Set(), llmMsg: '', prompt: null };
@@ -387,9 +385,10 @@ export async function render(root, params) {
     const tb = el('tbody');
     for (const r of stackRows(frames, exeMod, st.fold, st.opened)) {
       if (r.fold) {
-        tb.append(el('tr', { class: 'fold', title: '눌러서 펼치기', onclick: () => { st.opened.add(r.from); drawStack(); } },
+        tb.append(el('tr', { class: 'fold' },
           el('td', { class: 'n num', text: `#${r.from}–${r.to}` }),
-          el('td', { colspan: 4 }, `▸ ${r.modules.join(', ')} 프레임 ${r.n}개 접힘`)));
+          el('td', { colspan: 4 }, el('button', { type: 'button', class: 'ex-foldb', title: '눌러서 펼치기', onclick: () => { st.opened.add(r.from); drawStack(); } },
+            `▸ ${r.modules.join(', ')} 프레임 ${r.n}개 접힘`))));
         continue;
       }
       const f = r.f;

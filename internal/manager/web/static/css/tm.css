@@ -19,7 +19,7 @@
 .tm-meta b { color:var(--t1); font-weight:500; }
 .tm-meta a { color:var(--accent); text-decoration:none; } .tm-meta a:hover { text-decoration:underline; }
 .tm-meta .dim { color:var(--t3); }
-.tm-id { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; color:var(--t1); background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:0 5px; cursor:copy; }
+.tm-id { font:inherit; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; color:var(--t1); background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:0 5px; cursor:copy; }
 .tm-kpis { grid-template-columns:repeat(6,minmax(0,1fr)); margin-bottom:0; }
 .tm-kpis .bt-kpi .kv .num { font-size:16px; font-weight:650; }
 .tm-kpis .bt-kpi .kv.c-crit .num { color:var(--crit); }
@@ -166,3 +166,7 @@ a.lg-node.run:focus-visible { outline:2px solid var(--accent); outline-offset:1p
   .lg-kids > .lg-br:last-child::after, .lg-kids > .lg-br:only-child::after { display:block; bottom:auto; height:22px; }
   .lg-node { max-width:none; }
 }
+
+/* 키보드로 누르는 함수 이름(표 줄 전체를 눌러도 같다) */
+.tm-cmp-t button.tm-fn { border:0; background:none; padding:0; font:inherit; color:inherit; text-align:left; cursor:pointer; }
+.tm-cmp-t button.tm-fn:hover { text-decoration:underline; }
