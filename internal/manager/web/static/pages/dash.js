@@ -1,7 +1,7 @@
 // 사용자 보드(07, 카드 W-C): #dash/<id> 보기(머리의 고르기 칸으로 보드 바꾸기, ?tv=1 벽면) · #dashes는 마지막에 본 보드 · mountBoard(편집기 미리보기도 씀).
 import { api, poll, pollState } from '../api.js';
 import { can } from '../auth.js';
-import { el, info, relTime, fmtNum, DASH, LEVEL_TEXT, openDrawer, closeDrawer } from '../ui.js';
+import { el, info, relTime, fmtNum, fmtClock, DASH, LEVEL_TEXT, openDrawer, closeDrawer } from '../ui.js';
 import { fmtSpan } from '../chart.js';
 import { fitBody } from '../widgets/fit.js';
 import { WIDGETS, SHARED, RANGES, sized, widgetTitle } from '../widgets/index.js';
@@ -11,6 +11,7 @@ import { tileView, ALERT_MARK } from './dashboard.js';
 // ---- 순수 함수 (DOM 없이 호출) ----
 
 // Go 기간('15m' · '1h' · '1h30m' · '168h') → ms. 틀리면 null
+// editor.js의 parseDur('10m' → {n, u}, 칸 고치기용)와 이름만 같고 하는 일이 다르다. 그래서 합치지 않는다
 export function parseDur(s) {
   const m = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(String(s || '').trim());
   if (!m || !(m[1] || m[2] || m[3])) return null;
@@ -339,8 +340,7 @@ export function mountBoard(host, dash, opts = {}) {
     f.stlKey = key;
     f.stl.hidden = !on;
     if (!on) { f.stl.replaceChildren(); return; }
-    const d = new Date(okAt.get(f.key));
-    f.stl.replaceChildren(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} 값 `,
+    f.stl.replaceChildren(`${fmtClock(okAt.get(f.key)).slice(0, 5)} 값 `,
       info('이 위젯만 새 값을 받지 못해 지난 값을 보이고 있습니다. 계속되면 서버 상태를 확인하세요'));
   }
   function sigOf(t, ctx) {

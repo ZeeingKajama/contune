@@ -2,11 +2,9 @@
 // 근거는 매니저가 결정론적으로 모으고 LLM은 문장만 쓴다. 모든 문장에 근거 칩이 붙고, 칩을 누르면 그 근거를 볼 곳으로 간다.
 // LLM이 없거나 답이 계약에 맞지 않으면 규칙 문장이 보이고 그렇게 표시한다. 순수 함수는 DOM 없이 import된다.
 import { api, poll } from './api.js';
-import { el, esc, fmtNum, fmtClock, DASH, LEVEL_TEXT, openDrawer, closeDrawer, info, keepFocus } from './ui.js';
+import { el, enc, esc, fmtNum, fmtClock, DASH, LEVEL_TEXT, openDrawer, closeDrawer, info, keepFocus } from './ui.js';
 
 export const AI_MARK = '✦';
-const enc = encodeURIComponent;
-const q = (v) => encodeURIComponent(v);
 
 // ---- 순수 함수 ----
 
@@ -219,7 +217,7 @@ export function openTrace(alertId, ctx = {}) {
   const stop = poll(async () => {
     if (!d.body.isConnected) { stop(); return; }
     let t;
-    try { t = await api(`/alerts/${q(alertId)}/trace`); } catch (e) {
+    try { t = await api(`/alerts/${enc(alertId)}/trace`); } catch (e) {
       d.body.replaceChildren(el('p', { class: 'empty', text: e.status === 404 ? '없는 알림' : '추적을 불러오지 못함' }));
       stop();
       return;

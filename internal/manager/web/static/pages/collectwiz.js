@@ -1,7 +1,7 @@
 // 수집 출처 추가·편집 마법사(파일 → 줄 고르기 → 확인 → 범위·저장)와 그 순수 함수.
 // 순수 함수는 DOM 없이 호출된다(node로 검사). 화면 용어: 05 §14.9·§14.10.
 import { api, ApiError } from '../api.js';
-import { el, relTime, fmtNum, trapFocus, confirmBox, DASH } from '../ui.js';
+import { el, relTime, fmtNum, trapFocus, confirmBox, errText, DASH } from '../ui.js';
 
 // ====================== 순수 함수 ======================
 
@@ -374,6 +374,7 @@ export function withSource(logs, source, replaceName) {
 }
 
 export const FILE_ORIGIN = { proc: '실행 중 프로세스', root: '로그 폴더', syslog: '시스템 로그' };
+// exit.js의 fmtBytes와 글 모양이 다르다(여기는 '384 MB'처럼 띄우고 100 넘으면 정수). 합치면 화면 글이 바뀌어 따로 둔다
 export function fmtBytes(n) {
   if (n == null) return DASH;
   const u = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -428,7 +429,6 @@ export function openWizard(opts) {
   document.body.append(bg);
   release = trapFocus(modal, { onEscape: tryClose });
 
-  const err = (e) => (e instanceof ApiError ? e.error || `오류 ${e.status}` : String(e));
   function go(n) { st.step = n; st.err = ''; draw(); }
   function drawSteps() {
     steps.replaceChildren(...STEPS.map((t, i) => el('li', { class: i + 1 === st.step ? 'on' : i + 1 < st.step ? 'done' : '', text: `${i + 1}. ${t}` })));
@@ -440,7 +440,7 @@ export function openWizard(opts) {
     try {
       const r = await api('/collect/discover', { method: 'POST', body: { host: st.host } });
       st.files = r.files || [];
-    } catch (e) { st.filesErr = e instanceof ApiError && e.status === 504 ? '에이전트가 10초 안에 답하지 않았습니다' : err(e); st.files = []; }
+    } catch (e) { st.filesErr = e instanceof ApiError && e.status === 504 ? '에이전트가 10초 안에 답하지 않았습니다' : errText(e); st.files = []; }
     st.busy = false;
     if (bg.isConnected) draw();
   }
@@ -498,7 +498,7 @@ export function openWizard(opts) {
       if (!st.lines.length) { st.err = '읽은 줄이 없습니다. 파일이 비어 있거나 아직 쓰이지 않았습니다.'; drawFiles(); return; }
       go(2);
     } catch (e) {
-      st.busy = false; st.err = err(e);
+      st.busy = false; st.err = errText(e);
       if (/read_roots/.test(st.err)) st.err += ' — 허용 폴더 안의 경로로 고치세요. 이 폴더를 꼭 읽어야 하면 서버 담당자가 에이전트 YAML의 read_roots에 더하고 에이전트를 다시 시작해야 합니다.';
       if (bg.isConnected) drawFiles();
     }
@@ -728,7 +728,7 @@ export function openWizard(opts) {
     ];
   }
   async function loadFresh() {
-    try { const r = await api('/collect'); st.fresh = r.sets || []; } catch (e) { st.fresh = (opts.sets || []); st.err = err(e); }
+    try { const r = await api('/collect'); st.fresh = r.sets || []; } catch (e) { st.fresh = (opts.sets || []); st.err = errText(e); }
   }
   const curSet = () => (st.fresh || opts.sets || []).find((s) => s.scope === st.scope);
   const newSource = () => {
@@ -803,7 +803,7 @@ export function openWizard(opts) {
       st.busy = false;
       if (e instanceof ApiError && e.status === 409) { st.fresh = null; st.err = '다른 곳에서 먼저 고쳤습니다. 최신 내용을 다시 읽어 왔으니 바뀌는 내용을 확인하고 다시 저장하세요.'; }
       else if (e instanceof ApiError && e.status === 400) { st.err = '서버가 설정을 받아들이지 않았습니다.'; st.problems = (e.body && e.body.problems) || []; }
-      else st.err = err(e);
+      else st.err = errText(e);
       if (bg.isConnected) drawSave();
     }
   }

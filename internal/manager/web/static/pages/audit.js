@@ -1,10 +1,10 @@
 // 감사 기록 #audit[?range=&from=&to=&kind=&actor=&q=] — 관리 계정만.
 // 위: 제목 · 시간 막대 · CSV / 요약 카드 5개 / 분류 단추 · 사용자 · 검색 / 표(행을 누르면 펼침) / 더 보기
 import { api, poll } from '../api.js';
-import { el, fmtNum, DASH, stateBox, changed, keepFocus, toastError } from '../ui.js';
+import { el, fmtNum, fmtDT, p2, DASH, stateBox, changed, keepFocus, setQuery, toastError } from '../ui.js';
 import { can } from '../auth.js';
 import { createTimeRange } from '../timerange.js';
-import { fmtDT, hashOfFlow } from './batch.js';
+import { hashOfFlow } from './batch.js';
 import { KINDS, actorName, actionCell, bursts } from '../auditfmt.js';
 
 const PAGE = 200;
@@ -24,7 +24,6 @@ export function summary(stats) {
     users: Object.keys(actors).filter((a) => !a.startsWith('web(')).length,
   };
 }
-const p2 = (n) => String(n).padStart(2, '0');
 export function fmtFull(ts) {
   const d = new Date(ts);
   return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, '0')}`;
@@ -54,13 +53,7 @@ export async function render(host, params, query = {}) {
 
   try { boards = new Map(((await api('/flows')).flows || []).map((x) => [x.id, x.board])); } catch (e) { /* 링크만 단순해진다 */ }
 
-  function keepQuery() {
-    const [, qs = ''] = location.hash.slice(1).split('?');
-    const p = new URLSearchParams(qs);
-    for (const k of ['kind', 'actor', 'q']) { if (f[k]) p.set(k, f[k]); else p.delete(k); }
-    const s = p.toString();
-    history.replaceState(null, '', '#audit' + (s ? '?' + s : ''));
-  }
+  function keepQuery() { setQuery({ kind: f.kind, actor: f.actor, q: f.q }); }
   function params2(extra = {}) {
     const t = tr.current();
     const p = new URLSearchParams({ from: String(Math.round(t.from)), to: String(Math.round(t.to)) });
@@ -157,7 +150,7 @@ export async function render(host, params, query = {}) {
           const n = burst.get(e.id);
           const risky = actionCell(e.action);
           const tr2 = el('tr', { class: 'click' + (open.has(e.id) ? ' is-open' : ''), tabindex: '0', 'data-fk': String(e.id), 'aria-expanded': open.has(e.id) ? 'true' : 'false' },
-            el('td', { class: 'num at', text: fmtDT(e.ts) }),
+            el('td', { class: 'num at', text: fmtDT(e.ts, { sec: true }) }),
             el('td', { class: 'cut', text: actorName(e.actor), title: e.actor }),
             el('td', {}, risky, n ? el('span', { class: 'au-burst', text: `같은 곳 5분 새 ${n}회`, title: '같은 사용자 칸에서 5분 안에 로그인 실패 3회 이상' }) : null),
             targetCell(e),

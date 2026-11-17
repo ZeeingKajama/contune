@@ -39,6 +39,7 @@ B 묶음 9개가 이 계약에 기대어 동시에 일한다. **아래 이름·�
 | `tabBar(items, active, onSelect)` | 인자 그대로. 더하기: 단추에 `role=tab`·`aria-selected`, ←→로 이동 |
 | `fmtDT(ts, {sec})` | `MM-DD HH:MM`, `sec:true`면 `MM-DD HH:MM:SS`. 표·목록의 날짜는 이것 하나로 |
 | `p2(n)` | 두 자리 채우기(이미 있는 것을 export) |
+| `enc(s)` | `encodeURIComponent` 별칭(D에서 더함). 화면이 주소 조각을 만들 때 이것 하나로 |
 | `setTitle(text)` / `setTitleCount(n)` | `document.title` = `(n) text · 이음`(n이 0이면 괄호 없음, text가 없으면 `이음`) |
 | `setQuery(patch)` | 지금 해시의 쿼리에 `patch`를 합쳐 `history.replaceState`로 바꾼다(값이 `''`·null이면 그 키를 뺀다). hashchange를 일으키지 않는다. 거르기·정렬을 주소에 남길 때 쓴다 |
 

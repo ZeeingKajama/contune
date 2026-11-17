@@ -12,8 +12,8 @@
 //   marks   [{at(ms), label, color}] 세로 점선 표시(실행 시작·종료). label은 첫 띠에서만 주면 된다.
 //   shades  [{from, to, color, label}] 구간 음영. label이 있으면 음영 왼쪽 위에 글자.
 // → {plot, setData(series, range?), setShades(shades), setMarks(marks), destroy()}
+import { p2 } from './ui.js';
 
-const p2 = (n) => String(n).padStart(2, '0');
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
 }

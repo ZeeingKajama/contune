@@ -2,7 +2,7 @@
 // 넓은 화면(2026-11-11): 카드는 자기 폭을 보고(컨테이너 쿼리) 이상 서버·주목할 배치·세 번째 요인을 더 보이고,
 // 서버 맵 칸은 가장 큰 그룹이 한 줄을 채우도록 늘어나며(30~120px) 넓으면 칸 안에 서버 이름을 쓴다.
 import { api, poll } from '../api.js';
-import { el, esc, fmtNum, fmtClock, relTime, stateBox, numUnit, badgeHTML, info, EMPTY, DASH, LEVEL_TEXT, parseOwner, shortExec } from '../ui.js';
+import { el, esc, fmtNum, fmtClock, fmtDT, relTime, stateBox, numUnit, badgeHTML, info, EMPTY, DASH, LEVEL_TEXT, parseOwner, shortExec } from '../ui.js';
 import { flowState } from '../tree.js';
 import { groupCmp, setGroupOrder } from '../grouporder.js';
 import { openValue, openLevel, acceptsOf, todoFactors, baselineText, placeText, factorHref, incidentText } from '../riskfmt.js';
@@ -261,8 +261,7 @@ export function whenText(t, now) {
   const day = Math.floor((startOfDay(t) - startOfDay(now)) / 86400000);
   if (day <= 0) return hm;
   if (day === 1) return `내일 ${hm}`;
-  const d = new Date(t);
-  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${hm}`;
+  return fmtDT(t);
 }
 // '실패 · 02:31' · '실행 중 · 03:37~' · '조건 대기 · 03:37~' · '09:00 예정'
 export const BATCH_ROW = { failed: ['✕', '실패'], running: ['▶', '실행 중'], gated: ['⏸', '조건 대기'], plan: ['◷', '예정'] };

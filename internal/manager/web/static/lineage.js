@@ -3,10 +3,9 @@
 // 묶음은 실행 ID로 먼저 잡는다. 부모(PPID)는 같은 실행 · 같은 서버 안에서만 잇고, 부모 기록이 없으면(데몬처럼 부모를 끊고
 // 나가 PPID 1이 된 것, 부모가 이미 지워진 것) 리더 바로 아래에 둔다. 이음 밖에서 뜬 것은 실행 없이 서버별로 묶는다.
 // 입력은 ProcInfo(model/service.go, GET /procs · /runs/{id} procs · /services/{id} procs) 그대로. 순수 함수는 DOM 없이 호출된다.
-import { el, fmtNum, fmtClock, numUnit, shortExec, DASH } from './ui.js';
+import { el, enc, fmtNum, fmtClock, numUnit, shortExec, DASH } from './ui.js';
 import { fmtTime } from './chart.js';
 
-const q = encodeURIComponent;
 export const KIDS_MAX = 8; // 한 부모 아래 보이는 자식 수(넘치면 +n)
 
 // ---- 순수 함수 ----
@@ -99,7 +98,7 @@ function when(ts, now) {
 export function renderLineage(groups, opts = {}) {
   const now = opts.now || Date.now();
   const title = opts.svcTitle || ((s) => s);
-  const svcHref = opts.svcHref || ((p) => `#svc/${q(p.service)}?host=${q(p.host)}` + (p.ended_at ? `&at=${Math.round(p.ended_at)}` : ''));
+  const svcHref = opts.svcHref || ((p) => `#svc/${enc(p.service)}?host=${enc(p.host)}` + (p.ended_at ? `&at=${Math.round(p.ended_at)}` : ''));
 
   function procNode(n) {
     const p = n.p;
@@ -112,7 +111,7 @@ export function renderLineage(groups, opts = {}) {
     if (p.leader) line3.push(el('span', { class: 'lg-tag', text: '스텝 명령' }));
     if (p.service) line3.push(el('a', { class: 'lg-svc', href: svcHref(p), onclick: (e) => e.stopPropagation() }, `서비스 ${title(p.service)}`, p.auto ? el('span', { class: 'lg-auto', text: '자동' }) : null));
     if (n.again) line3.push(el('span', { class: 'lg-tag again', text: '재기동' }));
-    if (ex) line3.push(el('a', { class: 'lg-exit', href: '#exit/' + q(p.exit_id) }, `■ ${ex} →`));
+    if (ex) line3.push(el('a', { class: 'lg-exit', href: '#exit/' + enc(p.exit_id) }, `■ ${ex} →`));
     const vals = opts.values && st === 'up' ? el('span', { class: 'lg-v' }) : null;
     if (vals) vals.innerHTML = `CPU ${numUnit(p.cpu, '%')} · RSS ${numUnit(p.rss_mb, 'MB', 0)}`;
     return el('div', { class: cls, title: tip },
@@ -140,7 +139,7 @@ export function renderLineage(groups, opts = {}) {
     const kids = [el('b', { class: 'lg-c', text: g.exec_id ? name || `실행 ${shortExec(g.exec_id)}` : '이음 밖 기동' }),
       el('span', { class: 'lg-l2 num', text: g.exec_id ? `실행 #${shortExec(g.exec_id)} · ${when(g.started_at, now)}` : g.host })];
     if (!g.exec_id) return el('div', { class: 'lg-node run outside', title: '이음이 띄운 실행에 속하지 않은 프로세스. 그 너머는 추적할 근거가 없다' }, kids);
-    return el('a', { class: 'lg-node run', href: '#run/' + q(g.exec_id), title: '기동한 실행의 타임머신' }, kids);
+    return el('a', { class: 'lg-node run', href: '#run/' + enc(g.exec_id), title: '기동한 실행의 타임머신' }, kids);
   }
 
   const rows = groups.map((g) => {

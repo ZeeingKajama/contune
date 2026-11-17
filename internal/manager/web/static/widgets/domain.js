@@ -3,7 +3,7 @@
 // 채우고(높이 100%, 넘치면 안에서 스크롤) update(ctx)마다 바뀐 것이 있을 때만 다시 그린다(스크롤 위치는 지킨다).
 // 범위는 ctx.scope(그룹 접두사·서버·서비스·배치판·패널), 데이터는 ctx.shared(needs)·ctx.own(fetch).
 import { api } from '../api.js';
-import { el, fmtNum, fmtClock, DASH, parseOwner } from '../ui.js';
+import { el, fmtNum, fmtClock, fmtDT, DASH, parseOwner } from '../ui.js';
 import {
   hostsInScope, panelsInScope, alertsInScope, kpiTiles, bizCard, eventList, serverCard, serverMap, fitMap,
   summarizeBatch, batchCard, hoursFromFlows, timeline, riskCard, ownerHash, ownerText, svcHash, durText, startOfDay,
@@ -71,8 +71,7 @@ export const LOG_TEXT = { error: '오류', warn: '경고', info: '정보' };
 // 로그 줄 시각: 오늘이면 '13:23:10', 그 전이면 '11-10 13:23'
 export function logClock(ts, now) {
   if (ts >= startOfDay(now)) return fmtClock(ts);
-  const d = new Date(ts);
-  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${fmtClock(ts).slice(0, 5)}`;
+  return fmtDT(ts);
 }
 
 // 서비스 인스턴스 줄: scope.service · 범위 서버(scope.hosts, 아니면 groupOf(서버)가 그룹 안)로 거른다.

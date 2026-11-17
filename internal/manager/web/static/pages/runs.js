@@ -3,7 +3,7 @@
 // GitHub Actions 워크플로 실행 목록(상태 아이콘 · 소요 시간), Control-M "Jobs by hour"(시간대별 실행 막대),
 // Airflow 3 태스크 인스턴스 표(상태 · 시도 · 소요 시간).
 import { api, poll } from '../api.js';
-import { el, fmtDuration, fmtNum, shortExec, info, stateBox, changed, keepFocus, setQuery, setTitle, fmtDT, p2, DASH } from '../ui.js';
+import { el, enc, fmtDuration, fmtNum, fmtClock, shortExec, info, stateBox, changed, keepFocus, setQuery, setTitle, fmtDT, DASH } from '../ui.js';
 import { fmtTime, fmtTick, TIME_INCRS } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { runStatusHTML, TRIGGER_TEXT } from './batch.js';
@@ -126,7 +126,6 @@ export function runTabs(active) {
 export function procChips(list, host, max = 3) {
   const ps = (list || []).filter((p) => !p.leader).sort((a, b) => a.started_at - b.started_at || a.pid - b.pid);
   if (!ps.length) return null;
-  const enc = encodeURIComponent;
   const chip = (p) => {
     const st = !p.ended_at ? 'up' : p.exit_id ? 'down' : 'end';
     const href = p.exit_id ? '#exit/' + enc(p.exit_id) : p.service ? `#svc/${enc(p.service)}?host=${enc(host || '')}` : '';
@@ -178,13 +177,7 @@ export async function render(host, params, query = {}) {
   try { hosts = (await api('/hosts')).hosts || []; } catch (e) { /* 위와 같음 */ }
 
   // 주소: 거르기 값을 고치고 시간 구간(range·from·to)은 그대로 둔다
-  function keepQuery() {
-    const [, qs = ''] = location.hash.slice(1).split('?');
-    const p = new URLSearchParams(qs);
-    for (const k of ['flow', 'host', 'status', 'type', 'q']) { if (f[k]) p.set(k, f[k]); else p.delete(k); }
-    const s = p.toString();
-    history.replaceState(null, '', '#runs' + (s ? '?' + s : ''));
-  }
+  function keepQuery() { setQuery({ flow: f.flow, host: f.host, status: f.status, type: f.type, q: f.q }); }
   const sel = (key, label, opts, server) => {
     const s = el('select', { 'aria-label': label, 'data-k': key, onchange: () => { f[key] = s.value; keepQuery(); if (server) reload(); else redraw(); } },
       opts.map(([v, t]) => el('option', { value: v, text: t, selected: v === f[key] })));
@@ -250,7 +243,7 @@ export async function render(host, params, query = {}) {
       const n = KEYS.reduce((a, k) => a + b[k], 0);
       const on = win && win.from === b.from;
       const sameDay = new Date(t.from).toDateString() === new Date(t.to).toDateString();
-      const hm = (ts) => `${p2(new Date(ts).getHours())}:${p2(new Date(ts).getMinutes())}`;
+      const hm = (ts) => fmtClock(ts).slice(0, 5);
       const span = `${sameDay ? hm(b.from) : fmtDT(b.from)}~${sameDay ? hm(b.to) : fmtDT(b.to)}`;
       const what = KEYS.filter((k) => b[k]).map((k) => `${NAMES[k]} ${b[k]}`).join(' · ') || '실행 없음';
       const col = el('button', { type: 'button', class: 'rb' + (n ? '' : ' z') + (on ? ' on' : ''), disabled: !n,

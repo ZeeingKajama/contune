@@ -2,14 +2,13 @@
 // 실행 메뉴의 둘째 화면(첫째는 실행 이력). 서버 화면의 프로세스 탭, 실행 이력의 종료 표시, 알림, 타임머신 띠도 같은 보고서로 간다.
 // API(계약 §4): GET /exits?host=&from=&to=&limit= — 끝난 시각 내림차순, 규칙 진단 포함.
 import { api, poll } from '../api.js';
-import { el, fmtNum, shortExec, info, stateBox, changed, keepFocus, setTitle, fmtDT, DASH } from '../ui.js';
+import { el, enc, fmtNum, shortExec, info, stateBox, changed, keepFocus, setQuery, setTitle, fmtDT, DASH } from '../ui.js';
 import { createTimeRange } from '../timerange.js';
 import { runTabs } from './runs.js';
 import { CATEGORY_TEXT, EXIT_GROUPS, exitGroup, exitLevel, endBadge } from './exit.js';
 import { svcHash, serviceTitles } from './dashboard.js';
 
 const LIMIT = 1000;
-const q = encodeURIComponent;
 
 // ---- 순수 함수 ----
 // titles: 서비스 ID → 이름(서비스 이름으로도 찾는다)
@@ -46,13 +45,7 @@ export async function render(host, params, query = {}) {
   try { hosts = (await api('/hosts')).hosts || []; } catch (e) { /* 거르기 목록 없이 진행 */ }
   const titles = await serviceTitles();
 
-  function keepQuery() {
-    const [, qs = ''] = location.hash.slice(1).split('?');
-    const p = new URLSearchParams(qs);
-    for (const k of ['host', 'cat', 'q']) { if (f[k]) p.set(k, f[k]); else p.delete(k); }
-    const s = p.toString();
-    history.replaceState(null, '', '#exits' + (s ? '?' + s : ''));
-  }
+  function keepQuery() { setQuery({ host: f.host, cat: f.cat, q: f.q }); }
   const hostSel = el('select', { 'aria-label': '서버', onchange: () => { f.host = hostSel.value; keepQuery(); reload(); } },
     [['', '전체'], ...hosts.map((h) => [h.id, h.id])].map(([v, t]) => el('option', { value: v, text: t, selected: v === f.host })));
   if (f.host && !hosts.some((h) => h.id === f.host)) hostSel.append(el('option', { value: f.host, text: f.host, selected: true }));
@@ -85,12 +78,12 @@ export async function render(host, params, query = {}) {
     for (const x of rows) {
       const lv = exitLevel(x.category, x.resident);
       const run = x.exec_id
-        ? el('a', { href: '#run/' + q(x.exec_id), title: '타임머신에서 이 실행 보기', onclick: (ev) => ev.stopPropagation() },
+        ? el('a', { href: '#run/' + enc(x.exec_id), title: '타임머신에서 이 실행 보기', onclick: (ev) => ev.stopPropagation() },
           x.flow_id ? `${x.flow_id} › ${x.step_id || ''}` : '', el('span', { class: 'dim', text: ` #${shortExec(x.exec_id)}` }))
         : el('span', { class: 'dim', text: '이음 밖 기동' });
       const row = el('tr', { class: 'click' + (lv ? ' lv-' + lv : ''), tabindex: '0', 'data-fk': x.id },
         el('td', { class: 'num at', text: fmtDT(x.ended_at) }),
-        el('td', { class: 'cut' }, el('a', { href: '#host/' + q(x.host) + '/proc', class: 'hostl', text: x.host || DASH, title: '이 서버의 프로세스 탭', onclick: (ev) => ev.stopPropagation() })),
+        el('td', { class: 'cut' }, el('a', { href: '#host/' + enc(x.host) + '/proc', class: 'hostl', text: x.host || DASH, title: '이 서버의 프로세스 탭', onclick: (ev) => ev.stopPropagation() })),
         el('td', { class: 'proc' }, el('b', { text: x.comm || DASH }), el('span', { class: 'dim', text: ` · ${x.pid ?? DASH}` }),
           x.resident ? el('span', { class: 'ex-b', text: '상주', title: '스텝이 끝난 뒤에도 살아 있던 서비스' }) : null,
           x.service ? el('a', { class: 'exl-svc', href: svcHash(x.service, x.host, x.ended_at), text: titles[x.service] || x.service, title: '서비스 타임머신에서 끝난 시각 앞뒤 보기', onclick: (ev) => ev.stopPropagation() }) : null),
@@ -98,7 +91,7 @@ export async function render(host, params, query = {}) {
         el('td', { class: 'why', title: x.title || '' }, el('span', { class: 'ex-cat', text: CATEGORY_TEXT[x.category] || x.category || DASH }), ' ', x.title || '',
           x.has_llm ? el('span', { class: 'ex-b', text: 'LLM', title: 'LLM 참고 초안 있음' }) : null),
         el('td', { class: 'cut' }, run));
-      const go = () => { location.hash = '#exit/' + q(x.id); };
+      const go = () => { location.hash = '#exit/' + enc(x.id); };
       row.addEventListener('click', go);
       row.addEventListener('keydown', (ev) => { if (ev.target === row && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); go(); } });
       tb.append(row);

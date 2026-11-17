@@ -13,6 +13,8 @@ export function el(tag, attrs, ...kids) {
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+// 주소 조각(경로·쿼리 값) 이스케이프
+export const enc = encodeURIComponent;
 
 // ---- 순수 형식 함수 ----
 export const DASH = '—';

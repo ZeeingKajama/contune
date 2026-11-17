@@ -7,11 +7,10 @@
 // Kubernetes lastState.terminated(종료 사유를 상태로), Windows WER 버킷(원인 분류).
 // API(계약 §4): GET /exits/{id} · /exits/{id}/pack · /exits/{id}/prompt, POST /exits/{id}/analyze, GET /exits?exec_id=
 import { api } from '../api.js';
-import { el, esc, fmtNum, relTime, fmtDuration, fmtClock, shortExec, toast, openDrawer, info, stateBox, setTitle, fmtDT, DASH } from '../ui.js';
+import { el, enc, esc, fmtNum, relTime, fmtDuration, fmtClock, shortExec, toast, openDrawer, info, stateBox, setTitle, fmtDT, DASH } from '../ui.js';
 import { can } from '../auth.js';
 import { svcHash, ownerHash, serviceTitles } from './dashboard.js';
 
-const q = encodeURIComponent;
 
 // ---- 순수 함수 (DOM 없이 호출) ----
 export const CATEGORY_TEXT = {
@@ -88,7 +87,7 @@ export function endText(x) {
 // 알림(kind exit)의 화면 주소: dedup_key "exit:<id>" → #exit/<id>
 export function exitHashOfAlert(a) {
   const m = /^exit:(.+)$/.exec(String(a.dedup_key || ''));
-  if (m) return '#exit/' + q(m[1]);
+  if (m) return '#exit/' + enc(m[1]);
   return ownerHash(a.exec_id) || '#alerts';
 }
 // 타임머신 띠 글: "프로세스 종료 1건 — matching_svc SIGSEGV · book_insert에서 NULL 역참조"
@@ -164,6 +163,7 @@ export function parseStackLine(s) {
   const m = /^\s*([\d.,]+%)\s+(\S*;\S*)\s*$/.exec(String(s || ''));
   return m ? { pct: m[1], stack: m[2].split(';').filter(Boolean) } : null;
 }
+// collectwiz.js의 fmtBytes와 글 모양이 다르다(여기는 단위를 붙이고 GB까지·소수 한 자리, 거기는 띄우고 TB까지·100 넘으면 정수). 합치면 화면 글이 바뀌어 따로 둔다
 export function fmtBytes(n) {
   if (n == null) return DASH;
   const u = ['B', 'KB', 'MB', 'GB'];
@@ -187,7 +187,7 @@ export function snippetOf(code, r) {
     && a >= s.start && b <= snipEnd(s));
 }
 const isUlid = (s) => /^[0-9A-HJKMNP-TV-Z]{26}$/.test(String(s || ''));
-const runRef = (s) => '#run/' + q(s);
+const runRef = (s) => '#run/' + enc(s);
 
 // ---- DOM 도움 ----
 const mono = (text, cls = '') => el('code', { class: 'ex-mono ' + cls, text });
@@ -250,7 +250,7 @@ export function exitStrip(items) {
   if (!items || !items.length) return null;
   const it = items[0];
   const lv = exitLevel(it.category) || 'info';
-  return el('a', { class: `tm-exit ${lv}`, href: '#exit/' + q(it.id), title: '종료 보고서 열기' },
+  return el('a', { class: `tm-exit ${lv}`, href: '#exit/' + enc(it.id), title: '종료 보고서 열기' },
     el('span', { class: 'mk', text: lv === 'crit' ? '■' : lv === 'warn' ? '▲' : '●' }),
     el('span', { class: 'tx', text: stripText(items) }), el('span', { class: 'go', text: '→' }));
 }
@@ -268,7 +268,7 @@ export async function render(root, params) {
   const page = el('div', { class: 'ex' });
   root.append(page);
   let d;
-  try { d = await api('/exits/' + q(id)); } catch (e) {
+  try { d = await api('/exits/' + enc(id)); } catch (e) {
     setTitle('종료 보고서');
     page.append(el('h2', { class: 'ex-h2', text: '종료 보고서' }),
       e && e.status === 404 ? el('p', { class: 'empty', text: '종료 보고서를 찾을 수 없음' })
@@ -303,7 +303,7 @@ export async function render(root, params) {
 
   async function download() {
     try {
-      const body = await api(`/exits/${q(id)}/pack`);
+      const body = await api(`/exits/${enc(id)}/pack`);
       const blob = new Blob([typeof body === 'string' ? body : JSON.stringify(body, null, 2) + '\n'], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = el('a', { href: url, download: `exit-${id}.json` });
@@ -318,7 +318,7 @@ export async function render(root, params) {
   const head = el('div', { class: 'ex-head' });
   {
     const crumbs = [el('a', { href: '#exits', text: '종료 보고서' })];
-    if (rep.host) crumbs.push(' › ', el('a', { href: '#exits?host=' + q(rep.host), text: rep.host, title: '이 서버에서 끝난 프로세스' }));
+    if (rep.host) crumbs.push(' › ', el('a', { href: '#exits?host=' + enc(rep.host), text: rep.host, title: '이 서버에서 끝난 프로세스' }));
     const mk = level === 'crit' ? '■' : level === 'warn' ? '▲' : '●';
     const proc = el('span', {}, '프로세스 ', el('b', { class: 'ex-mono', text: rep.comm || DASH }),
       el('span', { class: 'dim', text: ` · pid ${rep.pid ?? DASH}` }),
@@ -333,7 +333,7 @@ export async function render(root, params) {
         el('button', { type: 'button', text: '⤓ 근거 묶음', title: '근거 묶음 내려받기(JSON)', onclick: download })),
       el('div', { class: 'ex-meta' }, proc,
         rep.service ? el('span', {}, '서비스 ', el('a', { class: 'ex-svc', href: svcAt, title: '서비스 타임머신에서 끝난 시각 앞뒤 보기' }, svcTitle, ' →')) : null,
-        el('span', {}, '서버 ', el('a', { href: `#host/${q(rep.host || '')}/proc`, text: rep.host || DASH, title: '이 서버의 프로세스 탭' })),
+        el('span', {}, '서버 ', el('a', { href: `#host/${enc(rep.host || '')}/proc`, text: rep.host || DASH, title: '이 서버의 프로세스 탭' })),
         el('span', {}, '기동 ', launchedBy(rep, pk)),
         rep.killed_by_agent ? el('span', { class: 'ex-warn', text: '이음이 종료 신호 보냄' }) : null));
   }
@@ -520,7 +520,7 @@ export async function render(root, params) {
   function evBlock(e) {
     const refs = (e.refs || []).map((r) => {
       if (!isUlid(r)) return el('span', { class: 'ex-mono', text: r });
-      return e.id === 'prev' ? el('a', { href: '#exit/' + q(r), text: `종료 보고서 #${shortExec(r)}` }) : el('a', { href: runRef(r), text: `실행 #${shortExec(r)}` });
+      return e.id === 'prev' ? el('a', { href: '#exit/' + enc(r), text: `종료 보고서 #${shortExec(r)}` }) : el('a', { href: runRef(r), text: `실행 #${shortExec(r)}` });
     });
     return el('div', { class: 'ex-ev', id: 'ex-ev-' + e.id },
       el('div', { class: 'ex-evk', text: EV_TEXT[e.id] || e.id }),
@@ -578,7 +578,7 @@ export async function render(root, params) {
   // LLM 참고 초안
   const llmCard = el('section', { class: 'card ex-card ex-llm', id: 'ex-llm' });
   async function getPrompt() {
-    if (!st.prompt) st.prompt = await api(`/exits/${q(id)}/prompt`);
+    if (!st.prompt) st.prompt = await api(`/exits/${enc(id)}/prompt`);
     return st.prompt;
   }
   const promptText = (p) => [p.system, p.prompt].filter(Boolean).join('\n\n');
@@ -616,7 +616,7 @@ export async function render(root, params) {
       msg.className = 'ex-pmsg';
       msg.textContent = '';
       try {
-        const r = await api(`/exits/${q(id)}/analyze`, { method: 'POST', body: { answer } });
+        const r = await api(`/exits/${enc(id)}/analyze`, { method: 'POST', body: { answer } });
         if (r && r.llm) {
           d.llm = r.llm;
           st.llmMsg = '';
@@ -651,7 +651,7 @@ export async function render(root, params) {
     clearInterval(waitTick);
     waitTick = setInterval(show, 1000);
     try {
-      const r = await api(`/exits/${q(id)}/analyze`, { method: 'POST' });
+      const r = await api(`/exits/${enc(id)}/analyze`, { method: 'POST' });
       if (r && r.available) { d.llm = r.llm; st.llmMsg = ''; } else { d.llm_available = false; st.llmMsg = (r && r.message) || 'LLM 연동 뒤 쓸 수 있습니다'; }
     } catch (err) {
       st.llmMsg = err.status === 502 ? `LLM 답을 쓰지 못함: ${err.error}` : err.status === 403 ? '' : `분석을 요청하지 못함${err.error ? ': ' + err.error : ''}. 잠시 뒤 다시 맡기세요`;

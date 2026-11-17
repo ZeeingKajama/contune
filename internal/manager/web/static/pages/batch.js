@@ -3,21 +3,14 @@
 // Control-M(상태 색 관례 · 강제 OK · 재실행 · 강제 종료), 서버 상세의 탭 카드(05 §14.8).
 import { api, poll } from '../api.js';
 import { el, table, badgeHTML, fmtDuration, toast, openDrawer, closeDrawer, confirmBox, DASH, esc, relTime, shortExec,
-  act, stateBox, changed, keepFocus, setTitle, fmtDT as uiFmtDT } from '../ui.js';
+  act, stateBox, changed, keepFocus, setTitle, fmtDT, p2 } from '../ui.js';
 import { flowState } from '../tree.js';
 import { gate } from '../auth.js';
 import { actorName, actionCell } from '../auditfmt.js';
 import { renderFlowGraph, flowColumns } from '../flowgraph.js';
 
-const p2 = (n) => String(n).padStart(2, '0');
-// 다른 화면이 import한다(초까지). 본체는 ui.js
-export const fmtDT = (ts) => (ts ? uiFmtDT(ts, { sec: true }) : DASH);
-// 분까지: 목록·지표 카드용
-export function fmtMD(ts) {
-  if (!ts) return DASH;
-  const d = new Date(ts);
-  return `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
-}
+// 날짜는 ui.js fmtDT 하나: 실행 시각은 초까지(SEC), 목록·지표 카드는 분까지
+const SEC = { sec: true };
 // 앞으로 남은 시간(순수): '3분 후', '16시간 후', '2일 후'
 export function relFuture(ts, now = Date.now()) {
   if (!ts) return '';
@@ -129,6 +122,7 @@ async function editorEnabled() {
   return editorOn;
 }
 
+// 배치 주소는 상태에서 통째로 다시 만든다(경로 + 이 화면 키만). ui.js setQuery는 지금 쿼리에 합치므로 다른 키가 남아 여기서는 안 쓴다
 const setHash = (h) => { if (location.hash !== h) history.replaceState(null, '', h); };
 const qsOf = (o) => {
   const p = new URLSearchParams();
@@ -160,7 +154,7 @@ function historyStrip(frs, n = 10) {
   for (let i = list.length; i < n; i++) box.append(el('i', { class: 'none' }));
   for (const f of list) {
     const dur = f.ended_at ? fmtDuration(f.ended_at - f.started_at) : '';
-    box.append(el('i', { class: 's-' + f.status.toLowerCase() + (f.status === 'FAILED' ? ' x' : ''), text: f.status === 'FAILED' ? '✕' : '', title: `${fmtMD(f.started_at)} · ${STATE_LABEL[f.status] || f.status}${dur ? ' · ' + dur : ''}` }));
+    box.append(el('i', { class: 's-' + f.status.toLowerCase() + (f.status === 'FAILED' ? ' x' : ''), text: f.status === 'FAILED' ? '✕' : '', title: `${fmtDT(f.started_at)} · ${STATE_LABEL[f.status] || f.status}${dur ? ' · ' + dur : ''}` }));
   }
   return box;
 }
@@ -237,7 +231,7 @@ async function renderBoard(host, params, query) {
         { key: 'state', label: '상태', html: true, render: (f) => { const s = flowState(f); return s === 'SCHEDULED' && !f.last ? `<span class="dim">${DASH}</span>` : (f.last && f.last.status !== 'RUNNING' && f.last.status !== 'SUCCEEDED' && f.last.status !== 'FAILED' ? badgeHTML(f.last.status) : badgeHTML(s)); } },
         { key: 'id', label: '플로우', render: (f) => el('span', { class: 'bt-name' }, el('b', { text: f.id }), f.board === board ? null : el('span', { class: 'bt-sub', text: f.board })) },
         { key: 'sched', label: '스케줄', render: (f) => el('span', { title: f.schedule ? `cron ${f.schedule}` : '수동 실행만' }, cronText(f.schedule)) },
-        { key: 'at', label: '최근 실행', render: (f) => el('span', { class: 'num' }, fmtMD(f.last && f.last.started_at)) },
+        { key: 'at', label: '최근 실행', render: (f) => el('span', { class: 'num' }, fmtDT(f.last && f.last.started_at)) },
         { key: 'dur', label: '소요 시간', num: true, render: (f) => {
           const l = f.last;
           if (!l || !l.started_at) return DASH;
@@ -245,7 +239,7 @@ async function renderBoard(host, params, query) {
           return fmtDuration(l.ended_at - l.started_at);
         } },
         { key: 'hist', label: '최근 10회', render: (f) => historyStrip(hist.get(f.id)) },
-        { key: 'next', label: '다음 실행', render: (f) => (f.next_run ? el('span', { class: 'num' }, fmtMD(f.next_run), el('span', { class: 'bt-sub', text: relFuture(f.next_run, now) })) : el('span', { class: 'dim', text: '수동' })) },
+        { key: 'next', label: '다음 실행', render: (f) => (f.next_run ? el('span', { class: 'num' }, fmtDT(f.next_run), el('span', { class: 'bt-sub', text: relFuture(f.next_run, now) })) : el('span', { class: 'dim', text: '수동' })) },
       ],
       rows,
       rowKey: (f) => f.id,
@@ -341,8 +335,8 @@ async function renderFlow(host, params, query) {
     const rateCls = st.rate == null ? '' : st.rate >= 95 ? 'c-ok' : st.rate >= 80 ? 'c-warn' : 'c-crit';
     kpis.replaceChildren(
       kpi('스케줄', esc(cronText(f.schedule)), f.schedule ? `cron ${f.schedule}` : '수동 실행만', 'txt'),
-      kpi('다음 실행', f.next_run ? esc(fmtMD(f.next_run)) : DASH, relFuture(f.next_run, S.now), 'txt'),
-      kpi('최근 실행', l ? `${runStatusHTML(l)} <span class="num">${esc(fmtMD(l.started_at))}</span>` : DASH,
+      kpi('다음 실행', f.next_run ? esc(fmtDT(f.next_run)) : DASH, relFuture(f.next_run, S.now), 'txt'),
+      kpi('최근 실행', l ? `${runStatusHTML(l)} <span class="num">${esc(fmtDT(l.started_at))}</span>` : DASH,
         l ? [lastDur && (l.ended_at ? `소요 시간 ${lastDur}` : `${lastDur} 경과`), TRIGGER_TEXT[l.trigger]].filter(Boolean).join(' · ') : ''),
       kpi('평균 소요 시간', st.avg == null ? DASH : esc(fmtDuration(st.avg)), st.avg == null ? '' : `성공 ${st.ok}회 기준 · 최대 ${fmtDuration(st.max)}`),
       kpi('성공률', st.rate == null ? DASH : `<span class="num">${st.rate}</span><span class="unit">%</span>`, st.n ? `최근 ${st.n}회 중 ${st.ok}회 성공` : '끝난 실행 없음', rateCls));
@@ -369,7 +363,7 @@ async function renderFlow(host, params, query) {
       pickerSig = sig;
       const mark = { SUCCEEDED: '✓', FAILED: '✕', RUNNING: '▶' };
       picker.replaceChildren(...list.map((f, i) => el('option', { value: i === 0 ? '' : f.id,
-        text: `${fmtDT(f.started_at)}  ${mark[f.status] || ''} ${STATE_LABEL[f.status] || f.status}${i === 0 ? ' (최근)' : ''}` })));
+        text: `${fmtDT(f.started_at, SEC)}  ${mark[f.status] || ''} ${STATE_LABEL[f.status] || f.status}${i === 0 ? ' (최근)' : ''}` })));
     }
     const cur = selRun();
     picker.value = !cur || cur === S.frs[S.frs.length - 1] ? '' : cur.id;
@@ -426,7 +420,7 @@ async function renderFlow(host, params, query) {
       const d = (c.ended_at || S.now) - c.started_at;
       const h = Math.max(4, Math.round((d / maxDur) * 52));
       grid.append(el('button', { type: 'button', class: 'gh-col' + (c === cur ? ' sel' : ''),
-        title: `${fmtDT(c.started_at)} · ${STATE_LABEL[c.status] || c.status} · ${c.ended_at ? fmtDuration(d) : fmtDuration(d) + ' 경과'} · ${TRIGGER_TEXT[c.trigger] || ''}`,
+        title: `${fmtDT(c.started_at, SEC)} · ${STATE_LABEL[c.status] || c.status} · ${c.ended_at ? fmtDuration(d) : fmtDuration(d) + ' 경과'} · ${TRIGGER_TEXT[c.trigger] || ''}`,
         onclick: () => { S.sel = c === S.frs[S.frs.length - 1] ? '' : c.id; keepQuery(); drawPane(); } },
       el('i', { class: 's-' + c.status.toLowerCase(), style: `height:${h}px` })));
     });
@@ -451,7 +445,7 @@ async function renderFlow(host, params, query) {
         const key = r.forced && r.status === 'SUCCEEDED' ? 'forced' : r.status.toLowerCase();
         const dur = r.started_at ? fmtDuration((r.ended_at || S.now) - r.started_at) : DASH;
         grid.append(el('button', { type: 'button', class: 'gc' + (c === cur ? ' sel' : ''),
-          title: `${s.id} · ${fmtDT(r.started_at || r.scheduled_at)} · ${STATE_LABEL[r.status] || r.status}${arr.length > 1 ? ` · 시도 ${r.attempt}` : ''} · ${dur}`,
+          title: `${s.id} · ${fmtDT(r.started_at || r.scheduled_at, SEC)} · ${STATE_LABEL[r.status] || r.status}${arr.length > 1 ? ` · 시도 ${r.attempt}` : ''} · ${dur}`,
           onclick: () => { S.sel = c === S.frs[S.frs.length - 1] ? '' : c.id; keepQuery(); openRun(r.exec_id, s.id); } },
         el('i', { class: 's-' + key }, arr.length > 1 ? el('b', { text: String(r.attempt) }) : null)));
       });
@@ -468,7 +462,7 @@ async function renderFlow(host, params, query) {
         { key: 'host', label: '실행 서버' },
         { key: 'attempt', label: '시도', num: true },
         { key: 'status', label: '상태', html: true, render: runStatusHTML },
-        { key: 'at', label: '시작 시각', render: (x) => el('span', { class: 'num', text: fmtDT(x.started_at) }) },
+        { key: 'at', label: '시작 시각', render: (x) => el('span', { class: 'num', text: fmtDT(x.started_at, SEC) }) },
         { key: 'dur', label: '소요 시간', num: true, render: (x) => (x.started_at ? fmtDuration((x.ended_at || S.now) - x.started_at) : DASH) },
         { key: 'exit', label: '종료 코드', num: true, render: (x) => (x.exit_code == null ? DASH : String(x.exit_code)) },
         { key: 'trigger', label: '실행 유형', render: (x) => TRIGGER_TEXT[x.trigger] || x.trigger },
@@ -480,7 +474,7 @@ async function renderFlow(host, params, query) {
     });
     return [
       el('div', { class: 'card bt-card bt-gridbox' }, el('div', { class: 'bt-gridscroll' }, grid), legend),
-      el('div', { class: 'bt-subhead' }, el('h3', { class: 'sec', text: '스텝 실행' }), el('span', { class: 'dim', text: cur ? `${fmtDT(cur.started_at)} 플로우 실행` : '' }),
+      el('div', { class: 'bt-subhead' }, el('h3', { class: 'sec', text: '스텝 실행' }), el('span', { class: 'dim', text: cur ? `${fmtDT(cur.started_at, SEC)} 플로우 실행` : '' }),
         el('span', { class: 'bt-sp' }), el('a', { class: 'bt-link', href: '#runs?flow=' + encodeURIComponent(id) + '&range=7d', text: '전체 실행 이력 →' })),
       el('div', { class: 'card bt-card bt-tablebox' }, tbl),
     ];
@@ -517,7 +511,7 @@ async function renderFlow(host, params, query) {
         const end = r.ended_at || S.now;
         const key = r.forced && r.status === 'SUCCEEDED' ? 'forced' : r.status.toLowerCase();
         track.append(el('button', { type: 'button', class: 'gt-bar s-' + key, style: `left:${x(r.started_at)};width:${w(r.started_at, end)}`,
-          title: `${s.id} · 시도 ${r.attempt} · ${STATE_LABEL[r.status] || r.status} · ${fmtDT(r.started_at)} ~ ${r.ended_at ? fmtDT(r.ended_at) : '실행 중'} · ${fmtDuration(end - r.started_at)}`,
+          title: `${s.id} · 시도 ${r.attempt} · ${STATE_LABEL[r.status] || r.status} · ${fmtDT(r.started_at, SEC)} ~ ${r.ended_at ? fmtDT(r.ended_at, SEC) : '실행 중'} · ${fmtDuration(end - r.started_at)}`,
           onclick: () => openRun(r.exec_id, s.id) }));
       }
       const lastR = arr[arr.length - 1];
@@ -563,7 +557,7 @@ async function renderFlow(host, params, query) {
     const t = el('table', { class: 'au-hist' });
     t.append(el('thead', {}, el('tr', {}, ['시각', '사용자', '행동', '내용'].map((h) => el('th', { text: h })))));
     t.append(el('tbody', {}, S.hist.map((e) => el('tr', {},
-      el('td', { class: 'num at', text: fmtDT(e.ts) }),
+      el('td', { class: 'num at', text: fmtDT(e.ts, SEC) }),
       el('td', { text: actorName(e.actor), title: e.actor }),
       el('td', {}, actionCell(e.action)),
       el('td', { class: 'dt', text: e.detail || DASH })))));
@@ -632,9 +626,9 @@ async function renderFlow(host, params, query) {
           onclick: () => goExec(t.exec_id) }, String(t.attempt)))) : null,
       el('h4', { class: 'dw-h', text: '실행 정보' }),
       el('dl', { class: 'dw-kv' },
-        kv('플로우 실행', fmtDT(fr ? fr.started_at : run.scheduled_at)),
+        kv('플로우 실행', fmtDT(fr ? fr.started_at : run.scheduled_at, SEC)),
         kv('실행 서버', el('a', { href: '#host/' + encodeURIComponent(run.host) + '/overview', text: run.host })),
-        kv('시작 시각', fmtDT(run.started_at)), kv('종료 시각', fmtDT(run.ended_at)),
+        kv('시작 시각', fmtDT(run.started_at, SEC)), kv('종료 시각', fmtDT(run.ended_at, SEC)),
         kv('소요 시간', dur), kv('종료 코드', run.exit_code == null ? DASH : String(run.exit_code)),
         kv('실행 유형', TRIGGER_TEXT[run.trigger] || run.trigger || DASH),
         kv('실행 ID', el('code', { title: run.exec_id, text: '…' + shortExec(run.exec_id) }))),

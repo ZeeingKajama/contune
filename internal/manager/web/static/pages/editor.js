@@ -1,8 +1,8 @@
 // 편집기 #edit/<id> · #edit/new?board=&from= — 캔버스형 시각 편집기
 // 왼쪽 팔레트(스텝 추가) · 가운데 캔버스(자동 배치, 포트를 끌어 선행 연결) · 오른쪽 속성 창(또는 YAML)
 import { api, ApiError } from '../api.js';
-import { el, toast, confirmBox, DASH, errText, stateBox, setTitle, leaveGuard, trapFocus } from '../ui.js';
-import { hashOfFlow, hashOfBoard, fmtDT, cronText } from './batch.js';
+import { el, toast, confirmBox, DASH, errText, stateBox, setTitle, leaveGuard, trapFocus, fmtDT, p2 } from '../ui.js';
+import { hashOfFlow, hashOfBoard, cronText } from './batch.js';
 import { gate } from '../auth.js';
 
 // ---- 순수 함수 ----
@@ -135,6 +135,7 @@ export function wouldCycle(steps, from, to) {
   return false;
 }
 // 기간 문자열 '10m' → {n:10, u:'m'}. 초·분·시간만 칸으로 고치고 나머지(ms, 1h30m)는 null
+// dash.js의 parseDur(Go 기간 → ms)와 이름만 같고 하는 일이 다르다(여기는 숫자 칸 + 단위 칸으로 나누기). 그래서 합치지 않는다
 export function parseDur(s) {
   const m = /^(\d+)(s|m|h)$/.exec(String(s ?? '').trim());
   return m ? { n: Number(m[1]), u: m[2] } : null;
@@ -142,7 +143,6 @@ export function parseDur(s) {
 
 // 스케줄 빌더: cron ↔ {mode, time, minute, every, dows}
 export const SCHED_MODES = [['daily', '매일'], ['weekdays', '평일'], ['weekly', '매주'], ['hourly', '매시'], ['every', '주기'], ['manual', '수동'], ['cron', 'cron']];
-const p2 = (n) => String(n).padStart(2, '0');
 export function cronMode(expr) {
   const base = { mode: 'cron', time: '06:00', minute: 0, every: 10, dows: [1, 2, 3, 4, 5], raw: String(expr ?? '').trim() };
   const raw = base.raw;
@@ -763,7 +763,7 @@ function mount(page, info, st, ctx) {
   function drawNext() {
     if (!nextBox) return;
     nextBox.replaceChildren(...(ui.next.length
-      ? ui.next.slice(0, 3).map((t) => el('span', { class: 'ed-tok', text: fmtDT(typeof t === 'number' ? t : Date.parse(t)) }))
+      ? ui.next.slice(0, 3).map((t) => el('span', { class: 'ed-tok', text: fmtDT(typeof t === 'number' ? t : Date.parse(t), { sec: true }) }))
       : [el('span', { class: 'ed-none', text: st.schedule.trim() ? DASH : '수동 실행만' })]));
   }
 
@@ -893,7 +893,7 @@ function mount(page, info, st, ctx) {
         drawCanvas(); drawSide(); drawProbs();
         touch();
         clearTimeout(timer); validate();
-      } catch (e) { msg.textContent = e instanceof ApiError ? e.error || `오류 ${e.status}` : String(e); }
+      } catch (e) { msg.textContent = errText(e); }
       finally { go.disabled = false; }
     } });
     modal = el('div', { class: 'modal-bg ed-mbg', onclick: (e) => { if (e.target === modal) closeAssist(); } },

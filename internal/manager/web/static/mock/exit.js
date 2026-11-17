@@ -16,6 +16,7 @@ function pageParam(k) {
 const codeMode = () => { const m = pageParam('code'); return m === 'snippets' || m === 'off' || m === 'none' ? m : 'tools'; };
 
 // 줄 앞 시각: 화면이 보이는 시각(브라우저 지역 시간)과 맞춘다
+// mock은 화면 모듈(ui.js)을 import하지 않는다(가짜 서버 쪽). 그래서 두 자리 채우기를 따로 둔다
 const p2 = (n) => String(n).padStart(2, '0');
 const hhmmss = (ts) => { const d = new Date(ts); return `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`; };
 const ok = (body, status = 200) => ({ status, body });

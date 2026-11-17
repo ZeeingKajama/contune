@@ -1,13 +1,12 @@
 // 빠른 이동(Ctrl+K, 위 막대의 '찾기' 단추). 서버·플로우·서비스·업무 패널·보드·화면을 이름으로 찾아 옮긴다.
 import { api } from './api.js';
 import { can } from './auth.js';
-import { el, badge, trapFocus } from './ui.js';
+import { el, enc, badge, trapFocus } from './ui.js';
 import { flowState } from './tree.js';
 
 const RECENT_KEY = 'eum.qj.recent';
 const TTL = 30000;
 const MAX = 30;
-const enc = encodeURIComponent;
 
 const SCREENS = [
   ['관제', '#dashboard'], ['서버', '#hosts'], ['배치', '#board'], ['업무', '#biz'], ['서비스', '#svcs'], ['보드', '#dashes'],

@@ -8,7 +8,7 @@ import { api, poll } from '../api.js';
 import { lineChart, fmtTime } from '../chart.js';
 import { renderFlame, compareLeaf, verdict } from '../flame.js';
 import { parseSpan } from '../ai.js';
-import { el, esc, fmtNum, fmtClock, fmtDuration, numUnit, info, shortExec, svcOwner, toast, act, stateBox, changed, keepFocus, setTitle, DASH, LEVEL_TEXT } from '../ui.js';
+import { el, enc, esc, fmtNum, fmtClock, fmtDuration, numUnit, info, shortExec, svcOwner, toast, act, stateBox, changed, keepFocus, setTitle, DASH, LEVEL_TEXT } from '../ui.js';
 import { createTimeRange } from '../timerange.js';
 import { gate, can } from '../auth.js';
 import { bandsFromPanel, pickPanel } from './panelbands.js';
@@ -17,7 +17,6 @@ import { bizTabs, splitPrefix } from './biz.js';
 import { svcHash, servicesOf } from './dashboard.js';
 import { lineageOf, renderLineage } from '../lineage.js';
 
-const q = encodeURIComponent;
 const AT_PAD = 15 * 60e3;
 const LG_RUNS = 4; // 계보에 그리는 실행 수(최근 것부터)
 
@@ -95,7 +94,8 @@ function peakOf(points, from, to) {
   return m;
 }
 const launchText = (x) => (x.flow_id ? `${x.flow_id} › ${x.step_id || ''}` : x.exec_id ? shortExec(x.exec_id) : '');
-const errText = (e) => (typeof e === 'string' ? ['', e] : [e.file || '', e.msg || e.error || '']);
+// 검증 오류 한 건 → [파일, 글]. ui.js errText(요청 실패 글)와 다른 것이라 이름을 달리한다
+const errParts = (e) => (typeof e === 'string' ? ['', e] : [e.file || '', e.msg || e.error || '']);
 
 // ---- 공용 부품 ----
 function stateEl(inst, def, tag = 'span', attrs = {}) {
@@ -104,7 +104,7 @@ function stateEl(inst, def, tag = 'span', attrs = {}) {
 }
 function launchLink(x) {
   if (!x.exec_id) return el('span', { class: 'dim', text: '이음 밖 기동', title: '이음이 띄운 실행에 속하지 않은 프로세스' });
-  return el('a', { href: '#run/' + q(x.exec_id), title: '기동한 실행의 타임머신', onclick: (ev) => ev.stopPropagation() },
+  return el('a', { href: '#run/' + enc(x.exec_id), title: '기동한 실행의 타임머신', onclick: (ev) => ev.stopPropagation() },
     launchText(x), el('span', { class: 'dim', text: ` #${shortExec(x.exec_id)}` }));
 }
 function errorsEl(errors, canFix) {
@@ -112,7 +112,7 @@ function errorsEl(errors, canFix) {
   if (!n) return null;
   return el('details', { class: 'bz-errs', role: 'alert' },
     el('summary', { text: `읽지 못한 서비스 정의 ${n}개` }),
-    el('ul', {}, ...errors.map((e) => { const [f, m] = errText(e); return el('li', {}, f ? el('code', { text: f }) : null, f ? ` — ${m}` : m); })),
+    el('ul', {}, ...errors.map((e) => { const [f, m] = errParts(e); return el('li', {}, f ? el('code', { text: f }) : null, f ? ` — ${m}` : m); })),
     el('p', { class: 'bz-todo', text: canFix ? '매니저의 services 폴더에서 이 파일을 고치고 다시 읽기' : '관리자에게 알리기' }));
 }
 
@@ -151,11 +151,11 @@ async function renderList(root, query) {
       d.title && d.title !== d.id ? el('span', { class: 'dim sv-id', text: d.id }) : null,
       it.auto ? el('span', { class: 'sv-auto', text: '자동', title: '규칙 없이 실행 파일 이름으로 만든 서비스' }) : null);
     const exitCell = el('td', { class: 'num' + (exits ? ' bad' : '') });
-    if (exits) exitCell.append(el('a', { href: exits === 1 && lastExit ? '#exit/' + q(lastExit) : '#exits?q=' + q(d.id), text: fmtNum(exits), title: '종료 보고서', onclick: (ev) => ev.stopPropagation() }));
+    if (exits) exitCell.append(el('a', { href: exits === 1 && lastExit ? '#exit/' + enc(lastExit) : '#exits?q=' + enc(d.id), text: fmtNum(exits), title: '종료 보고서', onclick: (ev) => ev.stopPropagation() }));
     else exitCell.textContent = '0';
     const line = el('tr', { class: 'click' + (down ? ' g-failed' : ''), tabindex: '0', 'data-fk': d.id },
       name,
-      el('td', {}, it.panel ? el('a', { href: '#biz/' + q(it.panel), text: panelTitle[it.panel] || it.panel, onclick: (ev) => ev.stopPropagation() }) : DASH),
+      el('td', {}, it.panel ? el('a', { href: '#biz/' + enc(it.panel), text: panelTitle[it.panel] || it.panel, onclick: (ev) => ev.stopPropagation() }) : DASH),
       el('td', { class: 'sv-insts' }, ins.length ? ins.map((i) => stateEl(i, d, 'a', { href: svcHash(d.id, i.host), onclick: (ev) => ev.stopPropagation() })) : DASH),
       el('td', { class: 'num', text: fmtNum(procs) }),
       el('td', { class: 'num' }, procs ? numSpan(sumOf(ins, 'cpu'), '%') : DASH),
@@ -217,7 +217,7 @@ async function renderTM(root, id, query) {
   tr = createTimeRange(rangeBar, { def: '1h' });
   if (range0) tr.select(range0.from, range0.to);
   const view = () => { const c = tr.current(); return { from: Math.round(c.from), to: Math.round(c.to), live: c.live }; };
-  const detailPath = (v) => `/services/${q(id)}?from=${v.from}&to=${v.to}`;
+  const detailPath = (v) => `/services/${enc(id)}?from=${v.from}&to=${v.to}`;
 
   let detail;
   try { detail = await api(detailPath(view())); } catch (e) {
@@ -273,7 +273,7 @@ async function renderTM(root, id, query) {
     const ins = st.detail.instances || [];
     const v = stateView(st.inst && st.inst.state, def);
     const links = [['지표 CSV', 'samples'], ['프로파일', 'profile'], ['로그', 'logs']].map(([t, k]) => {
-      const h = `/api/v1/export/${k}?exec_id=${q(owner)}&from=${st.view.from}&to=${st.view.to}`;
+      const h = `/api/v1/export/${k}?exec_id=${enc(owner)}&from=${st.view.from}&to=${st.view.to}`;
       return can('operator') ? `<a class="tm-dl" href="${esc(h)}" download>⤓ ${esc(t)}</a>` : `<span class="tm-dl locked" title="운영 이상만 할 수 있습니다">⤓ ${esc(t)}</span>`;
     }).join('');
     const panel = st.panel || panels.find((p) => p.id === st.detail.panel);
@@ -281,7 +281,7 @@ async function renderTM(root, id, query) {
       <div class="tm-title"><h2>${esc(def.title || id)}</h2><span class="badge ${v.cls === 'up' ? 'ok' : v.cls === 'down' ? 'crit' : 'silent'}">${v.mark} ${esc(v.text)}</span>${st.detail.auto ? '<span class="sv-auto" title="규칙 없이 실행 파일 이름으로 만든 서비스">자동</span>' : ''}<span class="grow"></span><span class="tm-dls">${links}</span></div>
       <div class="tm-meta"><span>서비스 ID <b class="sv-mono">${esc(id)}</b></span><span class="sv-hosts">서버 </span>
       <span class="sv-launch">기동 </span>
-      ${panel ? `<span>패널 <a href="#biz/${esc(q(panel.id))}">${esc(panel.title || panel.id)} →</a></span>` : ''}
+      ${panel ? `<span>패널 <a href="#biz/${esc(enc(panel.id))}">${esc(panel.title || panel.id)} →</a></span>` : ''}
       <span>정의 ${def.file ? `<b class="sv-mono">${esc(def.file)}</b>` : '<b>자동(실행 파일 이름)</b>'}</span></div>`;
     const hostsEl = head.querySelector('.sv-hosts');
     const keep = new URLSearchParams(location.hash.split('?')[1] || '');
@@ -289,7 +289,7 @@ async function renderTM(root, id, query) {
       const p = new URLSearchParams(keep);
       p.set('host', i.host);
       p.delete('at');
-      hostsEl.append(stateEl(i, def, 'a', { href: '#svc/' + q(id) + '?' + p, class: `sv-inst ${stateView(i.state, def).cls}${i.host === host ? ' cur' : ''}`, 'aria-current': i.host === host ? 'true' : null }));
+      hostsEl.append(stateEl(i, def, 'a', { href: '#svc/' + enc(id) + '?' + p, class: `sv-inst ${stateView(i.state, def).cls}${i.host === host ? ' cur' : ''}`, 'aria-current': i.host === host ? 'true' : null }));
     }
     if (!ins.length) hostsEl.append(host || DASH);
     const lEl = head.querySelector('.sv-launch');
@@ -311,7 +311,7 @@ async function renderTM(root, id, query) {
     const alive = (i.procs || 0) > 0; // 감시 시간 밖(off)이어도 살아 있으면 값을 보인다
     const live = mine(st.detail.procs).filter((p) => !p.ended_at);
     const need = (def.expect && def.expect.count) || 0;
-    const exitSub = i.last_exit ? el('a', { href: '#exit/' + q(i.last_exit), text: '마지막 종료 보고서 →' }) : '';
+    const exitSub = i.last_exit ? el('a', { href: '#exit/' + enc(i.last_exit), text: '마지막 종료 보고서 →' }) : '';
     kpis.replaceChildren(
       kpi('상태', `<span class="sv-st ${v.cls}">${v.mark} ${esc(v.text)}</span>`, alive ? [i.since ? `${fmtTime(i.since)}부터` : '', i.state === 'off' ? '감시 시간 밖' : ''].filter(Boolean).join(' · ') : i.since ? `${fmtTime(i.since)} 끝남` : i.state === 'off' ? '감시 시간 밖' : ''),
       kpi('프로세스', `<span class="num">${esc(fmtNum(i.procs ?? 0))}</span><span class="unit">개</span>`, live.length ? 'pid ' + live.slice(0, 3).map((p) => p.pid).join(', ') + (live.length > 3 ? ` 외 ${live.length - 3}` : '') : need ? `기대 ${need}개` : '', i.state === 'down' ? 'c-crit' : ''),
@@ -346,9 +346,9 @@ async function renderTM(root, id, query) {
     const { from, to } = st.view;
     const qs = `from=${from}&to=${to}`;
     const [biz, svc, hcpu] = await Promise.all([
-      api(`/series?exec_id=${q(owner)}&name=biz.*&${qs}`).catch(() => ({ series: [] })),
-      api(`/series?exec_id=${q(owner)}&name=svc.cpu.pct,svc.rss.mb&${qs}`).catch(() => ({ series: [] })),
-      host ? api(`/series?host=${q(host)}&name=host.cpu.pct&${qs}`).catch(() => ({ series: [] })) : { series: [] },
+      api(`/series?exec_id=${enc(owner)}&name=biz.*&${qs}`).catch(() => ({ series: [] })),
+      api(`/series?exec_id=${enc(owner)}&name=svc.cpu.pct,svc.rss.mb&${qs}`).catch(() => ({ series: [] })),
+      host ? api(`/series?host=${enc(host)}&name=host.cpu.pct&${qs}`).catch(() => ({ series: [] })) : { series: [] },
     ]);
     if (!st.panel) {
       const names = (biz.series || []).filter((s) => (s.points || []).length).map((s) => s.name);
@@ -439,7 +439,7 @@ async function renderTM(root, id, query) {
     if (b) ranges.push(['B', '비교(B)', b, 'fb']);
     if (!ranges.length) ranges.push(['', '구간 전체', { from: st.view.from, to: st.view.to }, 'fa']);
     const got = {};
-    const res = await Promise.all(ranges.map(([, , r]) => api(`/profile?exec_id=${q(owner)}&from=${Math.round(r.from)}&to=${Math.round(r.to)}`).catch(() => ({ stacks: [], samples: 0 }))));
+    const res = await Promise.all(ranges.map(([, , r]) => api(`/profile?exec_id=${enc(owner)}&from=${Math.round(r.from)}&to=${Math.round(r.to)}`).catch(() => ({ stacks: [], samples: 0 }))));
     if (my !== flameSeq) return;
     flames.replaceChildren(...ranges.map(([, , , cls]) => el('div', { class: cls })));
     flames.classList.toggle('single', ranges.length === 1);
@@ -471,7 +471,7 @@ async function renderTM(root, id, query) {
     const key = ids.join(',') + '|' + own.map((p) => `${p.pid}:${p.ended_at || 0}`).join(',');
     if (!force && key === lgKey) return;
     lgKey = key;
-    const sets = await Promise.all(ids.map((x) => api(`/procs?exec_id=${q(x)}&limit=200`).then((r) => r.procs || []).catch(() => [])));
+    const sets = await Promise.all(ids.map((x) => api(`/procs?exec_id=${enc(x)}&limit=200`).then((r) => r.procs || []).catch(() => [])));
     const keep = new Set(ids);
     const procs = mergeProcs(sets.flat(), own.filter((p) => !p.exec_id || keep.has(p.exec_id)));
     const groups = lineageOf(procs, (p) => p.service === id && (!host || p.host === host));
@@ -503,7 +503,7 @@ async function renderTM(root, id, query) {
         el('td', { class: 'num' }, numSpan(p.cpu, '%')),
         el('td', { class: 'num' }, numSpan(p.rss_mb, 'MB')),
         el('td', { class: 'cut' }, launchLink(p)),
-        el('td', {}, p.exit_id ? el('a', { class: `sv-exitl ${lv}`, href: '#exit/' + q(p.exit_id) }, `${lv === 'warn' ? '▲' : '■'} ${(ex && ex.text) || '보고서'} →`) : DASH)));
+        el('td', {}, p.exit_id ? el('a', { class: `sv-exitl ${lv}`, href: '#exit/' + enc(p.exit_id) }, `${lv === 'warn' ? '▲' : '■'} ${(ex && ex.text) || '보고서'} →`) : DASH)));
     }
     t.append(tb);
     return el('div', { class: 'sv-pscroll' }, t);
@@ -512,8 +512,8 @@ async function renderTM(root, id, query) {
     const evs = mine(st.detail.events);
     if (!evs.length) return el('p', { class: 'empty', text: '이 구간에 사건 없음' });
     return el('ol', { class: 'tm-evs sv-evs' }, [...evs].reverse().map((e) => {
-      const link = e.exit_id ? el('a', { href: '#exit/' + q(e.exit_id), text: '종료 보고서 →' })
-        : e.exec_id ? el('a', { href: '#run/' + q(e.exec_id), text: '실행 →' }) : null;
+      const link = e.exit_id ? el('a', { href: '#exit/' + enc(e.exit_id), text: '종료 보고서 →' })
+        : e.exec_id ? el('a', { href: '#run/' + enc(e.exec_id), text: '실행 →' }) : null;
       return el('li', {}, el('span', { class: 'et num', text: fmtTime(e.ts) }),
         el('span', { class: `sv-ek ${e.kind}`, style: `--c:var(${eventColor(e)})`, text: EVENT_TEXT[e.kind] || e.kind }),
         el('span', { class: 'sv-etx', text: e.text || DASH }),
@@ -537,7 +537,7 @@ async function renderTM(root, id, query) {
   }
   async function loadLogs() {
     try {
-      const r = await api(`/logs?exec_id=${q(owner)}&level=error,warn&from=${st.view.from}&to=${st.view.to}&limit=200`);
+      const r = await api(`/logs?exec_id=${enc(owner)}&level=error,warn&from=${st.view.from}&to=${st.view.to}&limit=200`);
       st.logs = (r.events || []).sort((a, b) => a.ts - b.ts);
     } catch (e) { st.logs = []; }
     drawTabs();
