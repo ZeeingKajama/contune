@@ -1,7 +1,7 @@
 // 수집 출처 추가·편집 마법사(파일 → 줄 고르기 → 확인 → 범위·저장)와 그 순수 함수.
 // 순수 함수는 DOM 없이 호출된다(node로 검사). 화면 용어: 05 §14.9·§14.10.
 import { api, ApiError } from '../api.js';
-import { el, relTime, fmtNum, DASH } from '../ui.js';
+import { el, relTime, fmtNum, trapFocus, confirmBox, DASH } from '../ui.js';
 
 // ====================== 순수 함수 ======================
 
@@ -404,15 +404,29 @@ export function openWizard(opts) {
   const body = el('div', { class: 'cw-body' });
   const steps = el('ol', { class: 'cw-steps' });
   const foot = el('div', { class: 'btns cw-foot' });
-  const close = () => bg.remove();
-  const bg = el('div', { class: 'modal-bg cw-bg', onclick: (e) => { if (e.target === bg) close(); } },
-    el('div', { class: 'modal cw-modal', role: 'dialog', 'aria-label': opts.edit ? '로그 파일 편집' : '로그 파일 추가' },
+  let release = null;
+  const close = () => { if (release) { release(); release = null; } bg.remove(); };
+  // 입력한 것이 있으면 바깥 누르기·Esc·✕로는 묻고 닫는다(취소 단추는 바로 닫음)
+  const snap = () => JSON.stringify([st.path, st.name, st.rules, st.metrics]);
+  const first = snap();
+  let asking = false;
+  async function tryClose() {
+    if (asking) return;
+    if (snap() === first) { close(); return; }
+    asking = true;
+    const { ok } = await confirmBox({ title: '입력한 내용을 버리고 닫을까요?', message: '저장하지 않은 로그 파일 설정이 사라집니다.', okText: '버리고 닫기', danger: true });
+    asking = false;
+    if (ok && bg.isConnected) close();
+  }
+  const modal = el('div', { class: 'modal cw-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': opts.edit ? '로그 파일 편집' : '로그 파일 추가' },
       el('div', { class: 'cw-head' },
         el('b', { text: opts.edit ? '로그 파일 편집' : '로그 파일 추가' }),
         el('span', { class: 'cw-host' }, '서버 ', el('b', { id: 'cw-hostname', text: st.host })),
-        el('button', { type: 'button', class: 'ghost', text: '✕', title: '닫기', onclick: close })),
-      steps, body, foot));
+        el('button', { type: 'button', class: 'ghost', text: '✕', title: '닫기', 'aria-label': '닫기', onclick: tryClose })),
+      steps, body, foot);
+  const bg = el('div', { class: 'modal-bg cw-bg', onclick: (e) => { if (e.target === bg) tryClose(); } }, modal);
   document.body.append(bg);
+  release = trapFocus(modal, { onEscape: tryClose });
 
   const err = (e) => (e instanceof ApiError ? e.error || `오류 ${e.status}` : String(e));
   function go(n) { st.step = n; st.err = ''; draw(); }
@@ -437,7 +451,8 @@ export function openWizard(opts) {
     if (!opts.hostFixed && opts.hosts.length > 1) {
       const sel = el('select', { onchange: () => { st.host = sel.value; document.getElementById('cw-hostname').textContent = st.host; discover(); } },
         opts.hosts.map((h) => el('option', { value: h.id, text: `${h.id}  ${h.group}`, selected: h.id === st.host })));
-      kids.push(el('div', { class: 'cw-row' }, el('label', { text: '파일을 찾을 서버' }), sel));
+      sel.id = 'cw-hostsel';
+      kids.push(el('div', { class: 'cw-row' }, el('label', { for: 'cw-hostsel', text: '파일을 찾을 서버' }), sel));
     }
     const list = el('div', { class: 'cw-files' });
     if (st.busy) list.append(el('div', { class: 'empty', text: '에이전트에 물어보는 중…' }));
@@ -452,7 +467,7 @@ export function openWizard(opts) {
           const note = locked ? '에이전트 YAML read_roots에 더해야 함' : f.tracked ? `수집 중: ${f.tracked}` : '';
           const tr = el('tr', { class: 'cw-file' + (locked ? ' locked' : f.tracked ? ' tracked' : ''), 'data-p': f.path, onclick: locked ? null : () => pick(f), title: locked ? note : f.path },
             el('td', {}, el('span', { class: 'cw-org ' + f.origin, text: FILE_ORIGIN[f.origin] || f.origin }), f.comm ? el('span', { class: 'meta', text: ` ${f.comm}${f.flow ? ' · ' + f.flow : ''}` }) : null),
-            el('td', { class: 'cw-p', text: f.path }),
+            el('td', { class: 'cw-p' }, locked ? f.path : el('button', { type: 'button', class: 'cw-fbtn', text: f.path, onclick: (ev) => { ev.stopPropagation(); pick(f); } })),
             el('td', { class: 'num', text: fmtBytes(f.size) }),
             el('td', { text: relTime(f.mtime) }),
             el('td', { class: 'cw-note', text: note }));
@@ -463,8 +478,8 @@ export function openWizard(opts) {
       }
     }
     kids.push(list);
-    const inp = el('input', { type: 'text', class: 'cw-path', value: st.path, placeholder: '{log_dir}/app.{exec_id}.log', spellcheck: 'false', oninput: () => { st.path = inp.value; st.file = ''; } });
-    kids.push(el('div', { class: 'cw-row' }, el('label', { text: '경로' }), inp),
+    const inp = el('input', { type: 'text', id: 'cw-pathinp', class: 'cw-path', value: st.path, placeholder: '{log_dir}/app.{exec_id}.log', spellcheck: 'false', oninput: () => { st.path = inp.value; st.file = ''; } });
+    kids.push(el('div', { class: 'cw-row' }, el('label', { for: 'cw-pathinp', text: '경로' }), inp),
       el('div', { class: 'meta cw-hint' }, '{log_dir}·{exec_id}·* 를 쓸 수 있습니다. 고른 파일의 제안이 자동으로 들어가며 고칠 수 있습니다.'));
     if (st.err) kids.push(el('div', { class: 'cw-err', role: 'alert', text: st.err }));
     body.replaceChildren(...kids);
@@ -501,7 +516,7 @@ export function openWizard(opts) {
       let at = 0;
       for (const [a, b] of sp) { if (a < at) continue; if (a > at) tx.append(ln.slice(at, a)); tx.append(el('mark', { class: 'cw-val', text: ln.slice(a, b) })); at = b; }
       if (at < ln.length || !ln) tx.append(ln.slice(at) || ' ');
-      const row = el('div', { class: 'cw-line' + (lv ? ' ' + lv : applied && !sp.length ? ' no' : '') + (extra.pick ? ' pick' : '') + (extra.sel === i ? ' sel' : ''), 'data-i': String(i) },
+      const row = el(extra.pick ? 'button' : 'div', { ...(extra.pick ? { type: 'button' } : {}), class: 'cw-line' + (lv ? ' ' + lv : applied && !sp.length ? ' no' : '') + (extra.pick ? ' pick' : '') + (extra.sel === i ? ' sel' : ''), 'data-i': String(i) },
         el('span', { class: 'ln', text: String(i + 1) }), tx);
       if (extra.pick) row.addEventListener('click', () => extra.pick(i));
       box.append(row);
@@ -799,6 +814,8 @@ export function openWizard(opts) {
     else if (st.step === 2) drawPick();
     else if (st.step === 3) drawCheck();
     else drawSave();
+    // 다시 그리느라 포커스가 사라졌으면 첫 입력 칸(없으면 첫 단추)으로
+    if (!modal.contains(document.activeElement)) (body.querySelector('input:not([type=checkbox]), select, button') || foot.querySelector('button') || modal).focus();
   }
 
   // 편집: 같은 경로를 바로 읽어 줄 고르기부터 시작한다(못 읽으면 ①에 오류를 보인다)

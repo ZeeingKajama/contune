@@ -1,7 +1,7 @@
 // 서버 탭: #hosts 목록, #host/<id>/<tab> 상세. 서브 탭·차트·항목은 /catalog가 정한다.
 // 상세 모양: 머리(서버·상태) → 탭 카드(개요 + 그룹마다 대표 값·추이) → 시간 구간 → 차트 격자.
 import { api, poll } from '../api.js';
-import { el, esc, fmtNum, numUnit, relTime, fmtDuration, badge, table, info, shortExec, openDrawer, toast, svcOwner, parseOwner, EMPTY, DASH, LEVEL_TEXT } from '../ui.js';
+import { el, esc, fmtNum, numUnit, relTime, fmtDuration, fmtDT, badge, table, info, shortExec, openDrawer, toast, svcOwner, parseOwner, stateBox, changed, keepFocus, setTitle, setQuery, EMPTY, DASH, LEVEL_TEXT } from '../ui.js';
 import { lineChart, unitScale } from '../chart.js';
 import { createTimeRange } from '../timerange.js';
 import { hashWith } from '../tree.js';
@@ -82,7 +82,7 @@ export function levelOf(v, warn, crit) {
   if (warn != null && v >= warn) return 'warn';
   return 'ok';
 }
-export function meterHTML(v, warn, crit, stale) {
+export function meterHTML(v, warn, crit, stale, label = '') {
   if (v == null) return DASH;
   const lv = stale ? 'stale' : levelOf(v, warn, crit);
   const w = Math.max(0, Math.min(100, v)).toFixed(1);
@@ -90,7 +90,9 @@ export function meterHTML(v, warn, crit, stale) {
   const tip = stale ? '수신이 끊겨 마지막 값' : warn != null ? `경고 ${warn}% · 위험 ${crit}%` : '';
   // 반올림하면 89.99가 "90.0"인데 위험이 아니게 보인다. 내림해서 보이는 값과 판정을 맞춘다.
   const shown = Math.floor(v * 10 + 1e-9) / 10;
-  return `<span class="meter ${lv}"${tip ? ` title="${tip}"` : ''}><span class="mv">${numUnit(shown, '%', 1)}</span>` +
+  // 임계값은 title에만 있으면 화면 낭독기가 못 읽는다: aria-label에도 같은 말을 넣는다
+  const aria = `${label ? label + ' ' : ''}${numUnit(shown, '%', 1).replace(/<[^>]*>/g, '')}${warn != null ? `, 경고 ${warn} · 위험 ${crit}` : ''}${stale ? ', 수신 끊김' : ''}`;
+  return `<span class="meter ${lv}" role="img" aria-label="${aria}"${tip ? ` title="${tip}"` : ''}><span class="mv" aria-hidden="true">${numUnit(shown, '%', 1)}</span>` +
     `<span class="mt" aria-hidden="true"><i class="mf" style="width:${w}%"></i>${tick}</span></span>`;
 }
 
@@ -106,40 +108,73 @@ export async function render(root, params, query) {
   else await renderList(root, query || {});
 }
 
+const ST_CHIPS = [['', '전체'], ['bad', '이상'], ['crit', '위험'], ['warn', '경고'], ['silent', '무응답']];
+const stMatch = (h, st) => !st || (st === 'bad' ? h.state !== 'ok' : h.state === st);
+
 async function renderList(root, query) {
   const g = query.g || '';
   root.replaceChildren(el('div', { class: 'srv-lhead' }, el('h2', { class: 'sec', text: '서버' }), el('a', { class: 'srv-clink', href: '#collect', text: '로그 수집', title: '수집할 로그 파일과 규칙을 정하고 적용 상태를 봅니다' })));
+  const ctl = el('div', { class: 'srv-ctl' });
   const box = el('div', { class: 'srv-list' });
-  root.append(box);
-  let sortKey = '', sortDir = 'asc', hosts = [], now = Date.now(), th = {};
+  const wrap = el('div', { class: 'tblwrap srv-wrap' });
+  box.append(wrap);
+  root.append(ctl, box);
   const cols = [
     { key: 'state', label: '상태', render: (h) => badge(h.state) },
     { key: 'id', label: '서버', render: (h) => el('span', { class: 'hid', text: h.id }) },
     { key: 'group', label: '그룹' },
-    { key: 'cpu', label: 'CPU 사용률', num: true, html: true, render: (h) => meterHTML(h.cpu, th.cpu_warn, th.cpu_crit, h.state === 'silent') },
-    { key: 'mem', label: '메모리 사용률', num: true, html: true, render: (h) => meterHTML(h.mem, th.mem_warn, th.mem_crit, h.state === 'silent') },
+    { key: 'cpu', label: 'CPU 사용률', num: true, html: true, render: (h) => meterHTML(h.cpu, th.cpu_warn, th.cpu_crit, h.state === 'silent', 'CPU') },
+    { key: 'mem', label: '메모리 사용률', num: true, html: true, render: (h) => meterHTML(h.mem, th.mem_warn, th.mem_crit, h.state === 'silent', '메모리') },
     { key: 'load1', label: '부하 평균', num: true, render: (h) => fmtNum(h.load1, 2) },
     { key: 'disk_mbps', label: '디스크 처리량', num: true, html: true, render: (h) => rateHTML(h.disk_mbps, 'MB/s') },
     { key: 'net_kbps', label: '네트워크 트래픽', num: true, html: true, render: (h) => rateHTML(h.net_kbps, 'KB/s') },
     { key: 'last_seen', label: '마지막 수신', render: (h) => relTime(h.last_seen, now) },
   ];
-  function draw() {
-    const rows = sortHosts(hosts.filter((h) => inGroup(h, g)), sortKey, sortDir);
-    const t = table({
-      columns: cols, rows, empty: EMPTY.none,
-      onRow: (h) => { location.hash = hashWith(`host/${encodeURIComponent(h.id)}/${OVERVIEW}`, g ? { g } : {}); },
-    });
-    t.querySelectorAll('th').forEach((th, i) => {
-      const c = cols[i];
-      th.classList.add('sortable');
-      if (sortKey === c.key) th.textContent = c.label + (sortDir === 'asc' ? ' ▲' : ' ▼');
-      th.addEventListener('click', () => {
-        if (sortKey === c.key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-        else { sortKey = c.key; sortDir = c.num ? 'desc' : 'asc'; }
-        draw();
+  // 정렬·찾기·상태는 주소에 남긴다(#hosts?sort=cpu&dir=desc&q=match&st=bad)
+  let sortKey = cols.some((c) => c.key === query.sort) ? query.sort : '';
+  let sortDir = query.dir === 'desc' ? 'desc' : 'asc';
+  let q = query.q || '', stSel = ST_CHIPS.some(([k]) => k === query.st) ? query.st : '';
+  let hosts = [], now = Date.now(), th = {};
+  const sig = {};
+  const search = el('input', { type: 'search', class: 'srv-search', placeholder: '서버 이름 찾기', value: q, 'aria-label': '서버 이름 찾기' });
+  const chips = el('div', { class: 'srv-chips', role: 'group', 'aria-label': '상태' });
+  ctl.append(search, chips);
+  search.addEventListener('input', () => { q = search.value.trim(); setQuery({ q }); draw(true); });
+  const keep = (k, v) => { setQuery({ [k]: v }); };
+
+  function drawChips(base) {
+    const n = (k) => base.filter((h) => stMatch(h, k)).length;
+    chips.replaceChildren(...ST_CHIPS.filter(([k]) => !k || k === 'bad' || k === stSel || n(k)).map(([k, label]) =>
+      el('button', { type: 'button', class: 'srv-chip' + (k ? ' ' + k : '') + (stSel === k ? ' on' : ''), 'aria-pressed': String(stSel === k), 'data-fk': 'chip-' + (k || 'all'),
+        onclick: () => { stSel = k; keep('st', k); draw(true); } }, label, ' ', el('span', { class: 'n', text: String(n(k)) }))));
+  }
+  function draw(force) {
+    const inScope = hosts.filter((h) => inGroup(h, g));
+    const byName = inScope.filter((h) => !q || String(h.id).toLowerCase().includes(q.toLowerCase()));
+    const rows = sortHosts(byName.filter((h) => stMatch(h, stSel)), sortKey, sortDir);
+    if (!force && !changed(sig, 'list', { rows, th, sortKey, sortDir, q, stSel, seen: rows.map((h) => relTime(h.last_seen, now)) })) return;
+    keepFocus(root, () => {
+      const sx = wrap.scrollLeft, sy = wrap.scrollTop;
+      drawChips(byName);
+      const t = table({
+        columns: cols, rows, empty: hosts.length ? '조건에 맞는 서버 없음' : EMPTY.none, rowKey: (h) => h.id,
+        onRow: (h) => { location.hash = hashWith(`host/${encodeURIComponent(h.id)}/${OVERVIEW}`, g ? { g } : {}); },
       });
+      t.querySelectorAll('th').forEach((thEl, i) => {
+        const c = cols[i];
+        const on = sortKey === c.key;
+        thEl.dataset.fk = 'th-' + c.key;
+        thEl.setAttribute('aria-sort', on ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
+        thEl.replaceChildren(el('button', { type: 'button', class: 'srv-sort' + (on ? ' on' : ''), onclick: () => {
+          if (sortKey === c.key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+          else { sortKey = c.key; sortDir = c.num ? 'desc' : 'asc'; }
+          keep('sort', sortKey); keep('dir', sortDir);
+          draw(true);
+        } }, c.label, el('span', { class: 'ar', 'aria-hidden': 'true', text: on ? (sortDir === 'asc' ? '▲' : '▼') : '↕' })));
+      });
+      wrap.replaceChildren(t);
+      wrap.scrollLeft = sx; wrap.scrollTop = sy;
     });
-    box.replaceChildren(t);
   }
   disposers.push(poll(async () => {
     const r = await api('/hosts');
@@ -156,7 +191,14 @@ function digits(v) { const a = Math.abs(v); return Number.isInteger(v) || a >= 1
 
 async function renderHost(root, params, query) {
   const id = params.id;
-  const catalog = await api('/catalog');
+  setTitle(`${id} · 서버`);
+  let catalog;
+  try { catalog = await api('/catalog'); } catch (e) {
+    // 지표 묶음을 모르면 탭을 못 만든다: 화면 전체가 아니라 이 자리에서 다시 시도하게 한다
+    root.replaceChildren(el('div', { class: 'srv-head' }, el('h2', { class: 'sec', text: id })),
+      stateBox('error', { text: '지표 목록을 불러오지 못함', e, detail: '매니저가 응답하면 다시 시도로 풀립니다.', retry: () => renderHost(root, params, query) }));
+    return;
+  }
   const groups = catalog.groups || [];
   let tabId = resolveTab(params.tab, groups);
   const unitOf = {};
@@ -254,10 +296,15 @@ async function renderHost(root, params, query) {
     stopLive();
     bar.hidden = tabId === COLLECT; // 수집 탭에는 시간 구간이 없다
     const ctx = { hostId: id, tr, goTab: selectTab };
-    if (tabId === COLLECT) { const m = await import('./collect.js'); live = m.drawHostCollect(body, id); }
-    else if (tabId === OVERVIEW) live = await drawCharts(body, overviewCharts(groups), ctx, { titleLink: true });
-    else if (tabId === 'proc') live = await drawProc(body, groups.find((g) => g.id === 'proc'), ctx);
-    else live = await drawCharts(body, chartsOf(groups.find((g) => g.id === tabId)), ctx);
+    try {
+      if (tabId === COLLECT) { const m = await import('./collect.js'); live = m.drawHostCollect(body, id); }
+      else if (tabId === OVERVIEW) live = await drawCharts(body, overviewCharts(groups), ctx, { titleLink: true });
+      else if (tabId === 'proc') live = await drawProc(body, groups.find((g) => g.id === 'proc'), ctx);
+      else live = await drawCharts(body, chartsOf(groups.find((g) => g.id === tabId)), ctx);
+    } catch (e) {
+      // 이 탭만 실패로 보이고 다른 탭은 그대로 쓴다
+      body.replaceChildren(stateBox('error', { text: '이 탭을 그리지 못함', e, retry: draw }));
+    }
   }
   async function drawAll() {
     if (stopCards) stopCards();
@@ -419,8 +466,15 @@ async function drawProc(body, grp, ctx) {
       el('div', { class: 'srv-reg-m' }, '매니저 services/ 폴더에 두고 다시 읽기'));
   }
 
+  const psig = {};
   const numTd = (html) => { const td = el('td', { class: 'num' }); td.innerHTML = html; return td; };
   function drawProcs(list, now) {
+    // 2초마다 통째로 다시 그리던 것: 바뀐 것이 있을 때만 그리고 포커스·스크롤을 지킨다
+    const seen = list.map((p) => p.started_at ? fmtDuration(now - p.started_at) : '');
+    if (!changed(psig, 'p', { list, sel, seen })) return;
+    keepFocus(tblBox, () => drawProcs0(list, now));
+  }
+  function drawProcs0(list, now) {
     if (!list.length) { tblBox.replaceChildren(el('div', { class: 'empty srv-empty', text: '실행 중 프로세스 없음' })); }
     else {
       const t = el('table', { class: 'tbl srv-ptbl' });
@@ -432,8 +486,9 @@ async function drawProc(body, grp, ctx) {
           : g.kind === 'run' ? [el('span', { class: 'srv-gk', text: '실행' }), el('b', { text: `${g.flow_id || DASH} › ${g.step_id || DASH}` }), el('span', { class: 'dim', text: shortExec(g.exec_id) })]
             : [el('span', { class: 'srv-gk', text: '주인 없음' })];
         const pick = () => { sel = sel === g.key ? '' : g.key; selG = sel ? g : null; drawProcs(list, now); drawDetail(); };
-        const head = el('tr', { class: 'srv-grp' + (g.kind === 'etc' ? '' : ' click') + (sel === g.key ? ' sel' : ''), tabindex: g.kind === 'etc' ? false : '0',
-          onclick: g.kind === 'etc' ? null : pick, onkeydown: (ev) => { if (ev.key === 'Enter' && g.kind !== 'etc') pick(); } },
+        const head = el('tr', { class: 'srv-grp' + (g.kind === 'etc' ? '' : ' click') + (sel === g.key ? ' sel' : ''), tabindex: g.kind === 'etc' ? false : '0', 'data-fk': 'g-' + g.key,
+          onclick: g.kind === 'etc' ? null : pick,
+          onkeydown: (ev) => { if (ev.target === ev.currentTarget && (ev.key === 'Enter' || ev.key === ' ') && g.kind !== 'etc') { ev.preventDefault(); pick(); } } },
           el('td', { colspan: '3' }, el('span', { class: 'srv-gn' }, ...name, el('span', { class: 'dim', text: `프로세스 ${fmtNum(g.procs.length, 0)}` }))),
           numTd(numUnit(sum('cpu'), '%')), numTd(rateHTML(sum('rss_mb'), 'MB')), numTd(esc(fmtNum(sum('threads'), 0))), el('td'));
         tb.append(head);
@@ -443,7 +498,7 @@ async function drawProc(body, grp, ctx) {
           const runCell = p.exec_id && !parseOwner(p.exec_id)
             ? el('a', { class: 'srv-run', href: '#run/' + encodeURIComponent(p.exec_id), text: `${p.flow_id || DASH} › ${p.step_id || DASH}` })
             : el('span', { class: 'dim', text: '이음 밖 기동' });
-          tb.append(el('tr', { class: 'srv-prow' },
+          tb.append(el('tr', { class: 'srv-prow', 'data-fk': `p-${g.key}-${p.pid}` },
             el('td', {}, el('span', { class: 'srv-tree', text: i === g.procs.length - 1 ? '└' : '├' }), el('b', { text: p.comm || DASH }), ' ', el('span', { class: 'dim num', text: String(p.pid ?? DASH) })),
             el('td', {}, svcCell), el('td', { class: 'cut' }, runCell),
             numTd(numUnit(p.cpu, '%')), numTd(rateHTML(p.rss_mb, 'MB')), numTd(esc(fmtNum(p.threads, 0))),
@@ -470,7 +525,7 @@ async function drawProc(body, grp, ctx) {
       empty: '이 구간에 끝난 프로세스 없음', rows,
       onRow: (x) => { location.hash = '#exit/' + encodeURIComponent(x.id); },
       columns: [
-        { key: 'ended_at', label: '종료 시각', render: (x) => el('span', { title: new Date(x.ended_at).toLocaleString(), text: relTime(x.ended_at) }) },
+        { key: 'ended_at', label: '종료 시각', render: (x) => el('span', { title: fmtDT(x.ended_at, { sec: true }), text: relTime(x.ended_at) }) },
         { key: 'comm', label: '프로세스', render: (x) => el('span', {}, el('b', { text: x.comm || DASH }), ` · ${x.pid ?? DASH}`) },
         { key: 'service', label: '서비스', render: (x) => (x.service ? svcChip(x.service, x.host || ctx.hostId, x.ended_at) : DASH) },
         { key: 'end', label: '신호·코드', render: (x) => endBadge(x) },
@@ -481,8 +536,13 @@ async function drawProc(body, grp, ctx) {
     if (all.length > ENDED) endedBox.append(el('a', { class: 'srv-more', href: '#exits?host=' + encodeURIComponent(ctx.hostId), text: '더 보기 →' }));
   }
   stops.push(poll(() => drawEnded().catch(() => {}), 10000));
-  const r = await api(`/runs?host=${encodeURIComponent(ctx.hostId)}&limit=20`);
-  recent.replaceChildren(table({
+  async function drawRecent() {
+    let r;
+    try { r = await api(`/runs?host=${encodeURIComponent(ctx.hostId)}&limit=20`); } catch (e) {
+      recent.replaceChildren(stateBox('error', { text: '최근 실행을 불러오지 못함', e, retry: drawRecent }));
+      return;
+    }
+    recent.replaceChildren(table({
     empty: EMPTY.none, rows: r.runs || [],
     onRow: (x) => { location.hash = '#run/' + encodeURIComponent(x.exec_id); },
     columns: [
@@ -493,6 +553,8 @@ async function drawProc(body, grp, ctx) {
       { key: 'peak_cpu_pct', label: '최대 CPU 사용률', num: true, html: true, render: (x) => numUnit(x.peak_cpu_pct, '%') },
       { key: 'peak_rss_mb', label: '최대 RSS', num: true, html: true, render: (x) => rateHTML(x.peak_rss_mb, 'MB') },
     ],
-  }));
+    }));
+  }
+  await drawRecent();
   return () => { for (const s of stops) s(); };
 }
