@@ -134,6 +134,7 @@ export function dispose() { for (const d of disposers) { try { d(); } catch (e) 
 export async function render(root, params, query) {
   dispose();
   root.classList.add('cl');
+  disposers.push(() => root.classList.remove('cl')); // 떠날 때 지운다(#page는 모든 화면이 같이 쓴다)
   const scope = (query && query.s) || 'all';
   root.replaceChildren(el('h2', { class: 'sec', text: '로그 수집' }));
   const head = el('div', { class: 'cl-head' });

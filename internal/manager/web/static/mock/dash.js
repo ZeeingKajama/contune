@@ -13,12 +13,17 @@
 // 보드는 메모리에 둔다(처음 열 때 예시 넷 ops-wall · trading · settle · bizflow, reset()이면 처음으로). rev = 정의 JSON의 짧은 해시.
 // 지표 위젯 값은 카드 W "값 계산 규칙"을 mock 세계 값으로 흉내 낸다: 계열은 mock /series 처리기(services.js가 감싼 것 포함)에서,
 // Ref 타일은 mock /panels 처리기에서, 서비스 주인 키(svc:<서비스>@<서버>)는 mock /services의 인스턴스에서 얻는다.
+// 체험판(profile.js의 lite): 보드 둘(업무 흐름 bizflow · 매매 현황 trading), 틀린 파일 없음. 목록은 업무 흐름이 먼저(메뉴 '보드'가 그것을 연다).
+// 저장 · 삭제는 감사 기록(c.w.audit)에 남고, '누가'는 로그인한 사용자다.
+// 시연판(summit): 예시 넷에 벽면 한 화면 보드 allinone(All-in-One)을 더한다. 목록 맨 앞은 업무 흐름 그대로.
 import { MIN, HOUR, DAY, sha, round } from './util.js';
 import { groupMatch } from './world.js';
 import { CATALOG } from './catalog.js';
 import { ALL_NAMES } from './signal.js';
 import { routes as coreRoutes } from './core.js';
 import { routes as svcRoutes } from './services.js';
+import { LITE, DEMO, SUMMIT, pick } from './profile.js';
+import { userId } from './auth.js';
 
 const ok = (body, status = 200) => ({ status, body });
 const err = (status, msg, extra) => ({ status, body: { error: msg, ...extra } });
@@ -281,10 +286,33 @@ function examples(now) {
       { id: 'svc', type: 'services', w: 6, h: 2 },
     ],
   };
+  if (LITE) {
+    // 체험판: 매매체결 그룹에 서버가 하나뿐이라 매매 현황의 서버별 CPU · 서비스 목록은 그룹으로 거르지 않고 전부 보인다
+    const wide = (w) => (w.id === 'cpu' ? { ...w, scope: {} } : w.id === 'svcs' ? { ...w, title: '서비스', scope: {} } : w);
+    return [bizflow, { ...trading, desc: '체결·시세 서비스와 서버', widgets: trading.widgets.map(wide) }].map(normDash);
+  }
+  if (SUMMIT) {
+    // 시연판: 표 머리에 단위가 두 번 나오지 않게 이름표를 실제 dashboards/*.yaml처럼 쓴다(단위는 화면이 지표에서 붙인다)
+    const relabel = (d, id, labels) => ({ ...d, widgets: d.widgets.map((w) => (w.id === id ? { ...w, queries: w.queries.map((q, i) => ({ ...q, label: labels[i] })) } : w)) });
+    // 벽면 한 화면(1920×1080, 벽면 보기는 7줄까지)에 다 들어오는 보드. 12칸 격자에 순서대로:
+    // 업무 흐름 9×3 · 장애 위험도 3×3 / 서버 맵 5×3 · 금일 배치 3×3 · 실시간 이벤트 4×3 / 업무 지표 12×1(타일 한 줄)
+    const allinone = {
+      id: 'allinone', title: 'All-in-One', desc: '업무 흐름 · 장애 위험도 · 서버 · 금일 배치 · 업무 지표 · 실시간 이벤트를 벽면 한 화면에', range: '1h', ...meta(2 * HOUR),
+      widgets: [
+        { id: 'flow', type: 'bizflow', title: '업무 흐름', w: 9, h: 3, nodes: bizflow.widgets[0].nodes },
+        { id: 'risk', type: 'risk', w: 3, h: 3 },
+        { id: 'servermap', type: 'servermap', w: 5, h: 3 },
+        { id: 'batch', type: 'batch', w: 3, h: 3 },
+        { id: 'events', type: 'events', w: 4, h: 3 },
+        { id: 'kpi', type: 'kpi', w: 12, h: 1 },
+      ],
+    };
+    return [opsWall, relabel(trading, 'svc-res', ['CPU', '메모리']), relabel(settle, 'res', ['CPU', '메모리']), bizflow, allinone].map(normDash);
+  }
   return [opsWall, trading, settle, bizflow].map(normDash);
 }
 // 틀린 파일 예(목록 errors, 조회 422). 화면 오류 줄을 보이려는 것
-const BROKEN = [{ id: 'night', file: 'night.yaml', msg: '위젯 w3: 알 수 없는 종류 "gauge"' }];
+const BROKEN = pick([{ id: 'night', file: 'night.yaml', msg: '위젯 w3: 알 수 없는 종류 "gauge"' }], []);
 
 // ---- 메모리 보드 저장소 ----
 let book = null; // id → {dash, rev}
@@ -292,7 +320,8 @@ let broken = null; // id → {file, msg, rev}
 const revOf = (d) => sha(JSON.stringify(d));
 function store(c) {
   if (!book) {
-    book = new Map(examples(c.now).map((d) => [d.id, { dash: d, rev: revOf(d) }]));
+    // 체험판: '마지막 저장' 시각을 세계를 만든 때 기준으로(감사 기록 씨앗의 보드 저장과 같은 때)
+    book = new Map(examples(seedNow(c)).map((d) => [d.id, { dash: d, rev: revOf(d) }]));
     broken = new Map(BROKEN.map((b) => [b.id, { ...b, rev: sha(b.file + b.msg) }]));
   }
   return book;
@@ -302,7 +331,16 @@ export function reset() {
   broken = null;
 }
 const editable = (c) => c.flags.editor !== false;
-const actorOf = (c) => `user:${['viewer', 'operator', 'admin'].includes(c.flags.role) ? c.flags.role : 'admin'}`;
+const actorOf = (c) => (DEMO ? `user:${userId()}` : `user:${['viewer', 'operator', 'admin'].includes(c.flags.role) ? c.flags.role : 'admin'}`);
+// 체험판: 보드 저장 · 삭제도 감사 기록에 남긴다(ops.js가 쌓는 모양. 내용 글은 매니저 dash/crud.go와 같다)
+function audit(c, action, id, detail) {
+  if (DEMO && c.w && c.w.audit) c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor: 'user:web(127.0.0.1)', action, target: id, detail });
+}
+// 예시 보드의 처음 모습(체험판의 감사 기록 씨앗 audit.js가 '보드 저장' 줄을 같은 사람 · 때 · rev로 쓴다). 이 세션의 저장과 무관하다
+const seedNow = (c) => (DEMO && c.w ? c.w.base : c.now);
+export function seedBoards(c) {
+  return examples(seedNow(c)).map((d) => ({ id: d.id, rev: revOf(d), widgets: d.widgets.length, updated_by: d.updated_by, updated_at: d.updated_at }));
+}
 const currentRev = (id) => (book.has(id) ? book.get(id).rev : broken.has(id) ? broken.get(id).rev : '');
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -318,7 +356,9 @@ function itemOf(d, rev) {
 }
 function list(c) {
   const b = store(c);
-  const items = [...b.values()].map((e) => itemOf(e.dash, e.rev)).sort((x, y) => cmp(x.title, y.title) || cmp(x.id, y.id));
+  // 체험판: 업무 흐름(bizflow)이 맨 앞, 나머지는 제목 순
+  const first = (d) => (DEMO && d.id === 'bizflow' ? 0 : 1);
+  const items = [...b.values()].map((e) => itemOf(e.dash, e.rev)).sort((x, y) => first(x) - first(y) || cmp(x.title, y.title) || cmp(x.id, y.id));
   return ok({ dashboards: items, errors: [...broken.values()].map((x) => ({ file: x.file, msg: x.msg })), editable: editable(c) });
 }
 function getOne(c, m) {
@@ -354,6 +394,7 @@ function save(c, m) {
   const rev = revOf(saved);
   b.set(id, { dash: saved, rev });
   broken.delete(id);
+  audit(c, 'dash.save', id, `${cur ? '바꿈' : '새 보드'} · 위젯 ${saved.widgets.length}개 · rev ${cur || '-'}→${rev}`);
   return ok({ dash: saved, rev });
 }
 function remove(c, m) {
@@ -365,6 +406,7 @@ function remove(c, m) {
   if ((c.q.get('rev') || '') !== cur) return err(409, CONFLICT, { rev: cur });
   b.delete(id);
   broken.delete(id);
+  audit(c, 'dash.delete', id, `rev ${cur}→-`);
   return ok({});
 }
 

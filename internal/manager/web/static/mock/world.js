@@ -3,8 +3,18 @@
 // 실행 · 프로세스 · 서비스(06 §2.1): BATCH_JOB › start(batch-02)가 svr_a·svr_b·svr_c를 띄우고 2초 만에 끝난다(w.batchRun, w.procs).
 // svr_b가 SIGSEGV로 죽은 뒤 수동 재실행(w.batchRuns[1])이 svr_b만 다시 띄운다(계보, 06 §7.2).
 // 다른 mock 모듈은 이 파일이 만든 세계만 본다. 시각은 처음 만든 때(base)를 기준으로 상대 배치한다.
+// 체험판(profile.js의 lite)은 같은 코드로 작은 세계를 만든다: 서버 9대 · 그룹 6, 플로우 7개 · 배치판 4, 줄거리 하나.
+//   base − 150분 market-open(전부 성공)이 띄운 matching_svc가 base − 126분에 SIGSEGV로 죽고(w.crashRun, 종료 보고서 crash),
+//   base − 95분 market-open이 다시 띄운 것이 지금의 체결 서비스다(w.startRun). BATCH_JOB · svr_* 는 없다(w.batchRun = null).
+// 시연판(profile.js의 summit)은 full 크기 세계에 위 시간표(w.crashRun)를 얹고 다음을 더한다(모두 SUMMIT으로 감쌌다):
+//   실행 중 셋 가운데 margin-snap · exec-report는 base + 2분 · + 5분에 끝난다(SUMMIT_END), intraday-risk › post-risk는 계속 돈다(강제 종료 장면)
+//   daily-settle › settle이 리소스 게이트에 걸려 보류(HELD)다(summitHeld, w.heldRun). 강제 OK로 넘기면 settle-report가 이어 돈다
+//   개장 전 fetch-ref › verify-ref를 운영자가 강제 종료 · 강제 OK한 흔적(summitOps, 감사 기록 씨앗과 같은 실행)
+//   어제(k = 1) 실행은 주말이어도 있다(buildPast), 실행 뒤 정의에 더해진 스텝은 플로우 상태에서 무시한다(flowLast),
+//   예정된 스텝은 선행이 성공한 뒤에만 시작한다(tick)
 import { hash32, rnd, ulid, mulberry32, MIN, HOUR, DAY, SEC } from './util.js';
-import { hostAt } from './signal.js';
+import { hostAt, bizAt } from './signal.js';
+import { LITE, DEMO, SUMMIT, pick } from './profile.js';
 
 export const SURGE_START_SEC = 240; // 폭주는 지금 − 4분에 시작해 계속된다
 
@@ -15,7 +25,8 @@ export const ALLOW = [
   '^echo( |$)',
 ];
 
-const GROUPS = [
+// lite: 실제 서버 7대(buildHosts의 real) + ext-03(대외 송신 스텝) + dw-02(메모리 위험) = 9대. 번호 범위가 빈 줄은 실제 서버만 낸다
+const GROUPS = pick([
   ['채널', 'gw', 2, 6],
   ['채널', 'ext', 1, 6],
   ['매매체결', 'match', 2, 8],
@@ -25,7 +36,15 @@ const GROUPS = [
   ['청산결제', 'settle', 1, 4],
   ['청산결제', 'batch', 2, 4],
   ['rds', 'rds', 1, 4],
-];
+], [
+  ['채널', 'gw', 2, 1],
+  ['채널', 'ext', 3, 3],
+  ['매매체결', 'match', 2, 1],
+  ['매매통계', 'dw', 2, 2],
+  ['정보분배', 'feed', 3, 2],
+  ['지수산출', 'idx', 2, 1],
+  ['청산결제', 'batch', 2, 1],
+]);
 
 // 흐름 업무 여섯(카드 V §2)은 실제 서버 여섯이 낸다. 체결(match-01)·시세(feed-01)는 biz.order.*·biz.quote.*,
 // 나머지는 이 서버가 biz.<name>.* 를 낸다(signal.js STAGES)
@@ -101,7 +120,20 @@ const AUX = [
   ['주간월간', 'monthly-audit', '0 5 1 * *', 'collect@rds-03 report@rds-03', 'prev'],
 ];
 
+// lite의 보조 플로우 셋(스텝 서버는 lite 9대 안). 여섯째 칸: 스텝 타임아웃(실행 중인 store가 타임아웃을 넘긴 채 돌지 않게 넉넉히)
+const AUX_LITE = [
+  ['개장준비', 'fetch-ref', '10 5 * * 1-5', 'pull-ref@batch-01 verify-ref@batch-01', 'ok'],
+  ['장중', 'price-bar', '*/5 * * * *', 'make-bar@feed-01', 'ok'],
+  ['장중', 'margin-snap', '*/30 * * * *', 'snap@batch-01 store@batch-01', 'running', '1h'],
+];
+
 const BURN = (sec) => ['eum', 'burn', '--cpu', '1', '--duration', `${sec}s`];
+
+// 시연판: 실행 중으로 시작하는 세 플로우의 마지막 스텝(초). 평소에도 몇 분 걸리는 스텝이라 지난 이력의 소요 시간이 길고(실행 이력의 느림 배율이 터무니없지 않게),
+// margin-snap · exec-report는 페이지를 연 지 2분 · 5분쯤에 스스로 성공으로 끝난다. intraday-risk › post-risk는 끝나지 않는다(강제 종료 장면): 시간 제한을 1h로 늘린다
+const SUMMIT_LONG = SUMMIT ? { 'intraday-risk/post-risk': 240, 'margin-snap/store': 250, 'exec-report/render': 420 } : {};
+const SUMMIT_END = SUMMIT ? { 'margin-snap': 2 * MIN, 'exec-report': 5 * MIN } : {};
+const stepSec = (flow, s) => SUMMIT_LONG[`${flow.id}/${s.id}`] || 3 + (hash32(flow.id + s.id) % 18);
 
 function parseSteps(spec, id) {
   const out = [];
@@ -200,6 +232,15 @@ function buildFlows() {
       { id: 'start', host: 'batch-02', command: ['${DEMO}/scripts/start_job.sh'], depends: [], timeout: '10m', retry: { count: 0, interval: '1m' }, profile: false, starts: ['svr_a', 'svr_b', 'svr_c'] },
     ],
   };
+  if (LITE) {
+    // 체험판: 플로우 7개 · 배치판 4(개장준비 3 · 장중 2 · 대외송수신 1 · 정산 1). BATCH_JOB은 없고, 대외 송신은 ext-03 한 대에서,
+    // daily-settle은 아직 돌지 않았다(state plan: 실행 이력 없음 → 화면에 '예정')
+    extSend.steps[0].host = 'ext-03';
+    dailySettle.state = 'plan';
+    flows.push(marketOpen, quoteOpen, ...AUX_LITE.filter((x) => x[0] === '개장준비').map(mkAux), ...AUX_LITE.filter((x) => x[0] === '장중').map(mkAux), extSend, dailySettle);
+    for (const f of flows) f.file = `flows/${f.board}/${f.id}.yaml`;
+    return flows;
+  }
   flows.push(marketOpen, quoteOpen);
   for (const a of AUX.filter((x) => x[0] === '개장준비')) flows.push(mkAux(a));
   for (const a of AUX.filter((x) => x[0] === '장중')) flows.push(mkAux(a));
@@ -210,11 +251,16 @@ function buildFlows() {
   for (const a of AUX.filter((x) => x[0] === '대외송수신')) flows.push(mkAux(a));
   for (const a of AUX.filter((x) => x[0] === '정보계적재' || x[0] === '주간월간')) flows.push(mkAux(a));
   for (const f of flows) f.file = `flows/${f.board}/${f.id}.yaml`;
+  if (SUMMIT) for (const s of flows.find((f) => f.id === 'intraday-risk').steps) s.timeout = '1h';
+  // 시연판: 정산은 체결 대기 큐가 줄어야 돈다(리소스 게이트. 실제 flows/정산/daily-settle.yaml의 gate와 같은 모양, 기준은 대기 큐 타일의 경고 500건)
+  if (SUMMIT) dailySettle.steps[0].gate = [{ host: 'match-01', metric: 'biz.order.queue', max: 500 }];
   return flows;
 }
 
-function mkAux([board, id, schedule, spec, state]) {
-  return { id, board, schedule, on_missed: 'skip', steps: parseSteps(spec, id), state };
+function mkAux([board, id, schedule, spec, state, timeout]) {
+  const steps = parseSteps(spec, id);
+  if (timeout) for (const s of steps) s.timeout = timeout;
+  return { id, board, schedule, on_missed: 'skip', steps, state };
 }
 
 const DEAD = (r, flow) => {
@@ -300,7 +346,7 @@ function fillSucceeded(w, flow, fr, t0, opts = {}) {
   for (const s of order) {
     const depEnd = Math.max(t0, ...(s.depends || []).map((d) => ends.get(d) || t0));
     const start = depEnd + 1500;
-    const dur = (3 + (hash32(flow.id + s.id) % 18)) * SEC;
+    const dur = stepSec(flow, s) * SEC;
     const last = opts.runningLast && s === order[order.length - 1];
     newRun(w, fr, flow, s, 1, { scheduledAt: depEnd, startAt: start, endAt: last ? 0 : start + dur, status: 'SUCCEEDED' });
     ends.set(s.id, start + dur);
@@ -312,22 +358,41 @@ function buildHistory(w, flows, base) {
     if (flow.id === 'market-open' || flow.id === 'quote-open') continue;
     if (flow.id === 'ext-send-margin' || flow.id === 'BATCH_JOB') continue;
     const state = flow.state || 'ok';
+    if (state === 'plan') continue; // lite: 아직 돌지 않은 플로우(실행 이력 없음)
     if (state === 'prev') {
       const t0 = base - 20 * HOUR - (hash32(flow.id) % (5 * 3600)) * SEC;
       fillSucceeded(w, flow, newFlowRun(w, flow, 'schedule', t0), t0);
     } else if (state === 'running') {
       const t0 = base - 3 * MIN - (hash32(flow.id) % 60) * SEC;
       fillSucceeded(w, flow, newFlowRun(w, flow, 'schedule', t0), t0, { runningLast: true });
+      // 시연판: 끝나는 때를 정해 둔다(tick이 그때 성공으로 바꾼다)
+      const live = w.runs[w.runs.length - 1];
+      if (SUMMIT_END[flow.id]) live.plan = { startAt: live.started_at, endAt: base + SUMMIT_END[flow.id] };
     } else {
-      const t0 = base - (20 + (hash32(flow.id) % 480)) * MIN;
+      // lite: n분마다 도는 플로우의 최근 실행은 직전 주기 시각(끝나 있게 1분 여유)에 둔다 — 5분마다 도는 플로우가 몇 시간 전에 멈춘 것처럼 보이지 않게
+      const every = DEMO ? /^\*\/(\d+) \* /.exec(flow.schedule || '') : null;
+      const t0 = every ? Math.floor((base - MIN) / (Number(every[1]) * MIN)) * Number(every[1]) * MIN : base - (20 + (hash32(flow.id) % 480)) * MIN;
       fillSucceeded(w, flow, newFlowRun(w, flow, 'schedule', t0), t0);
     }
   }
-  // market-open: 폭주 중인 체결 서비스를 띄운 실행
   const mo = flows.find((f) => f.id === 'market-open');
+  const S = (id) => mo.steps.find((s) => s.id === id);
+  if (DEMO) {
+    // 체험판 시간표: base − 150분의 market-open(전부 성공). start-matching이 띄운 matching_svc는 base − 126분에 죽는다(buildProcs, 종료 보고서 crash)
+    const c0 = base - 150 * MIN;
+    const cfr = newFlowRun(w, mo, 'schedule', c0);
+    newRun(w, cfr, mo, S('fetch-master'), 1, { scheduledAt: c0, startAt: c0 + 1000, endAt: c0 + 6000, status: 'SUCCEEDED' });
+    newRun(w, cfr, mo, S('load-equity'), 1, { scheduledAt: c0 + 7000, startAt: c0 + 8000, endAt: c0 + 25000, status: 'SUCCEEDED' });
+    newRun(w, cfr, mo, S('load-deriv'), 1, { scheduledAt: c0 + 7000, startAt: c0 + 8000, endAt: c0 + 58000, status: 'SUCCEEDED' });
+    w.crashRun = newRun(w, cfr, mo, S('start-matching'), 1, { scheduledAt: c0 + 58000, startAt: c0 + 59500, endAt: c0 + 61500, status: 'SUCCEEDED', log: '(I) matching_svc 기동\n(I) 접수율 1500\n' });
+    w.crashRun.service = false; // 띄운 서비스는 죽었다(살아 있는 서비스는 w.startRun·w.quoteRun 둘)
+    w.crashRun.peak_cpu_pct = 99.6;
+    w.crashRun.peak_rss_mb = 48.6;
+    newRun(w, cfr, mo, S('check-ready'), 1, { scheduledAt: c0 + 61500, startAt: c0 + 62500, endAt: c0 + 67000, status: 'SUCCEEDED' });
+  }
+  // market-open: 폭주 중인 체결 서비스를 띄운 실행
   const t0 = base - 95 * MIN;
   const fr = newFlowRun(w, mo, 'schedule', t0);
-  const S = (id) => mo.steps.find((s) => s.id === id);
   newRun(w, fr, mo, S('fetch-master'), 1, { scheduledAt: t0, startAt: t0 + 1000, endAt: t0 + 6000, status: 'SUCCEEDED' });
   newRun(w, fr, mo, S('load-equity'), 1, { scheduledAt: t0 + 7000, startAt: t0 + 8000, endAt: t0 + 21000, status: 'FAILED', exit: 1, log: '(I) load_equity 시작\n(E) 적재 파일 검증 실패: 행 수 불일치\n' });
   newRun(w, fr, mo, S('load-equity'), 2, { scheduledAt: t0 + 81000, startAt: t0 + 82000, endAt: t0 + 99000, status: 'SUCCEEDED', trigger: 'schedule', reason: 'retry' });
@@ -385,6 +450,7 @@ function buildPast(w, flows) {
     const every = /^\*\/(\d+)$/.exec(f[0] || '');
     if (every && f[1] === '*') { step = Number(every[1]) * MIN; n = 10; }
     else if (f[1] === '*') { step = HOUR; n = 10; }
+    if (LITE) n = step === DAY ? 5 : 8; // 체험판: 일 단위 5회 · 주기 8회
     const weekdays = f[4] === '1-5';
     const { levels } = flowLevels(flow.steps);
     const order = [...flow.steps].sort((a, b) => levels.get(a.id) - levels.get(b.id));
@@ -392,19 +458,21 @@ function buildPast(w, flows) {
     for (let k = 1; made < n && k < n * 3; k++) {
       const t0 = latest - k * step + ((hash32(flow.id + 'j' + k) % 90) - 45) * SEC;
       const dow = new Date(t0 + 9 * HOUR).getUTCDay();
-      if (weekdays && step === DAY && (dow === 0 || dow === 6)) continue;
+      // 시연판: 어제(k = 1) 실행은 주말이어도 둔다 — 일 · 월요일에 열어도 어제의 종료 보고서(시세 OOM · 체결 SIGTERM)와 서비스 재기동 · 종료 수가 같은 장면으로 나오게
+      if (weekdays && step === DAY && (dow === 0 || dow === 6) && !(SUMMIT && k === 1)) continue;
       made++;
       const h = hash32(flow.id + '#' + k);
       const fr = newFlowRun(w, flow, 'schedule', t0);
-      const retryAt = h % 6 === 0 ? order[Math.min(order.length - 1, 1)] : null;
-      const failAt = h % 17 === 5 ? order[order.length - 1] : null;
+      // 체험판은 지난 이력에 무작위 재시도 · 실패가 없다(줄거리의 실패만 남게)
+      const retryAt = !LITE && h % 6 === 0 ? order[Math.min(order.length - 1, 1)] : null;
+      const failAt = !LITE && h % 17 === 5 ? order[order.length - 1] : null;
       const ends = new Map();
       let dead = false;
       for (const s of order) {
         if (dead) break;
         const depEnd = Math.max(t0, ...(s.depends || []).map((d) => ends.get(d) || t0));
         const start = depEnd + 1500;
-        const base = (3 + (hash32(flow.id + s.id) % 18)) * SEC;
+        const base = stepSec(flow, s) * SEC;
         const dur = Math.round(base * (0.75 + 0.6 * rnd(flow.id + s.id + k)));
         if (s === retryAt || s === failAt) {
           const fdur = Math.round(dur * 0.6);
@@ -441,7 +509,7 @@ function buildIncidents(base) {
   // 알림 규칙이 연 자동 기록: 하나는 사람이 장애로 확인했고, 하나는 아직(학습 라벨 아님, 05 §6.1)
   const [as, ae] = d(3, 13, 48, 6), [bs, be] = d(1, 10, 2, 4);
   list.push({ id: list.length + 1, start: as, end: ae, scope: '매매체결', title: '자동: 체결 · 대기 큐 위험', source: 'auto', note: '', confirmed: true });
-  list.push({ id: list.length + 1, start: bs, end: be, scope: '', title: '자동: match-01 CPU 92%, match-03 CPU 91%', source: 'auto', note: '', confirmed: false });
+  list.push({ id: list.length + 1, start: bs, end: be, scope: '', title: pick('자동: match-01 CPU 92%, match-03 CPU 91%', '자동: match-01 CPU 92%'), source: 'auto', note: '', confirmed: false });
   return list;
 }
 
@@ -576,6 +644,7 @@ export const PANELS = [
 
 // 프로세스 기록(06, 카드 P-C 모양 ProcInfo에서 값 칸을 뺀 것). cpu·rss_mb·threads는 mock/procs.js가 시각마다 채운다.
 // sig: 값의 모양(match·quote는 서비스 신호, job은 {cpu, rss}, resident는 이음 밖 서비스 없는 상주). owner는 주인 키.
+const CRASH_EXIT_ID = ulid(7001, 'exit/matching_svc/crash'); // exit.js의 IDS.crash와 같은 값(그 파일을 import하면 순환이라 여기서 다시 만든다)
 function buildProcs(w, base) {
   const P = (r, o) => {
     const p = { host: r.host, pid: 0, started_at: 0, ppid: 1, comm: '', exe: '', cmdline: '', user: 'eum', exec_id: r.exec_id,
@@ -595,8 +664,29 @@ function buildProcs(w, base) {
   leader(qr, 2840, 'start_quote.sh');
   P(qr, { pid: 2841, ppid: 2840, started_at: qr.started_at + 300, comm: 'quote_svc', exe: '/opt/demo/bin/quote_svc',
     cmdline: '/opt/demo/bin/quote_svc --port 9201', service: 'quote', profile: true, sig: 'quote' });
-  // BATCH_JOB › start: 2초 스텝이 svr_a·svr_b·svr_c를 띄운다. 규칙이 없어 실행 파일 이름으로 자동 서비스. svr_b는 12분 전 SIGSEGV
+  // 체험판: base − 150분 실행(w.crashRun)이 띄운 matching_svc는 base − 126분에 SIGSEGV로 죽었다.
+  // pid · 실행 파일 · 종료 ID는 종료 보고서 mock(exit.js의 crash 기록, IDS.crash)과 같은 값
+  if (w.crashRun) {
+    const cr = w.crashRun;
+    leader(cr, 48190, 'start_matching.sh');
+    P(cr, { pid: 48213, ppid: 1873, started_at: cr.started_at + 1200, ended_at: base - 126 * MIN, exit_id: CRASH_EXIT_ID, comm: 'matching_svc',
+      exe: '/opt/eum/demo/bin/matching_svc', cmdline: '/opt/eum/demo/bin/matching_svc --port 9100 --accept-rate 1500 --token=***',
+      service: 'matching', profile: true, sig: 'match' });
+  }
   const bj = w.flows.find((f) => f.id === 'BATCH_JOB');
+  if (bj) buildBatchJob(w, base, bj, P, leader);
+  // 서비스에 맞지 않은 상주: 개장준비 fetch-ref › pull-ref가 남긴 ref_cache(주인은 그 실행, 스텝은 끝남)
+  const pr = w.runs.filter((r) => r.flow_id === 'fetch-ref' && r.step_id === 'pull-ref' && r.ended_at).sort((a, b) => b.started_at - a.started_at)[0];
+  if (pr) {
+    pr.service = true; // 실행 주인의 상주 프로세스가 살아 있다(procsOf·지표가 지금까지)
+    P(pr, { pid: 5210, ppid: 1, started_at: pr.started_at + 800, comm: 'ref_cache', exe: '/opt/batch/bin/ref_cache',
+      cmdline: '/opt/batch/bin/ref_cache --listen 7311', sig: 'resident' });
+  }
+}
+
+// BATCH_JOB › start: 2초 스텝이 svr_a·svr_b·svr_c를 띄운다. 규칙이 없어 실행 파일 이름으로 자동 서비스. svr_b는 12분 전 SIGSEGV.
+// 이 플로우가 없는 세계(lite)에서는 부르지 않는다(w.batchRun = null, w.batchRuns = [])
+function buildBatchJob(w, base, bj, P, leader) {
   const b0 = base - 80 * MIN;
   const bfr = newFlowRun(w, bj, 'schedule', b0);
   const br = newRun(w, bfr, bj, bj.steps[0], 1, { scheduledAt: b0, startAt: b0 + 1000, endAt: b0 + 3000, status: 'SUCCEEDED',
@@ -625,13 +715,52 @@ function buildProcs(w, base) {
   leader(br2, 4180, 'start_job.sh');
   P(br2, { pid: 4188, ppid: 4180, started_at: br2.started_at + 700, comm: 'svr_b', exe: '/opt/batch/bin/svr_b',
     cmdline: '/opt/batch/bin/svr_b --conf /opt/batch/conf/svr_b.yaml', service: 'svr_b', auto: true, sig: { cpu: 49, rss: 362, threads: 4 } });
-  // 서비스에 맞지 않은 상주: 개장준비 fetch-ref › pull-ref가 남긴 ref_cache(주인은 그 실행, 스텝은 끝남)
-  const pr = w.runs.filter((r) => r.flow_id === 'fetch-ref' && r.step_id === 'pull-ref' && r.ended_at).sort((a, b) => b.started_at - a.started_at)[0];
-  if (pr) {
-    pr.service = true; // 실행 주인의 상주 프로세스가 살아 있다(procsOf·지표가 지금까지)
-    P(pr, { pid: 5210, ppid: 1, started_at: pr.started_at + 800, comm: 'ref_cache', exe: '/opt/batch/bin/ref_cache',
-      cmdline: '/opt/batch/bin/ref_cache --listen 7311', sig: 'resident' });
+}
+
+// 시연판: 감사 기록 씨앗(audit.js)의 강제 종료 · 강제 OK가 실제 실행에 남아 있게 한다.
+// 개장 전 fetch-ref › verify-ref가 7분 넘게 끝나지 않아 운영자가 강제 종료하고, 4분 뒤 사유를 적어 강제 OK로 넘겼다.
+function summitOps(w, base) {
+  const vr = w.runs.filter((r) => r.flow_id === 'fetch-ref' && r.step_id === 'verify-ref' && r.ended_at).sort((a, b) => b.started_at - a.started_at)[0];
+  if (!vr) return;
+  const killed = Math.min(vr.started_at + 7 * MIN + 12 * SEC, base - 6 * MIN);
+  if (killed <= vr.started_at) return;
+  vr.events.pop(); // 에이전트가 남긴 '성공' 대신
+  ev(vr, 'KILLED', killed, 'user:operator', 'kill');
+  ev(vr, 'SUCCEEDED', killed + 4 * MIN, 'user:operator', 'force-ok: 기준 정보는 원본과 수작업으로 대조함');
+  Object.assign(vr, { status: 'SUCCEEDED', ended_at: killed, exit_code: 137, forced: true, log_tail: '(I) verify-ref 시작\n(E) 강제 종료됨\n' });
+}
+
+// 시연판: 보류(HELD) 장면. 실제 제품의 리소스 게이트(sched/gate.go · scheduler.go)가 남기는 것과 같은 모양이다:
+// 선행을 만족한 WAITING 스텝의 게이트가 불충족이면 스케줄러가 HELD로 바꾸고 까닭("게이트 불충족: <서버> <지표>=<값> (max <기준>)")을 상태 변경 이력에 남긴다.
+// daily-settle이 base − 95초에 발화했는데 폭주로 체결 대기 큐가 쌓여 settle이 보류됐다. 폭주가 이어지는 동안 그대로이고, 강제 OK로 넘기면 settle-report가 이어 돈다.
+// 다른 실행의 번호가 바뀌지 않게 맨 뒤에 만든다.
+function summitHeld(w, base) {
+  const f = w.flows.find((x) => x.id === 'daily-settle');
+  const s = f && f.steps.find((x) => (x.gate || []).length);
+  if (!s) return;
+  const g = s.gate[0];
+  const t0 = base - 95 * SEC;
+  const fr = newFlowRun(w, f, 'schedule', t0);
+  for (const x of f.steps) {
+    const r = newRun(w, fr, f, x, 1, { scheduledAt: t0 });
+    if (x !== s) continue;
+    const v = bizAt(t0 + SEC, { now: base, base, surge: true, exact: true })[g.metric];
+    ev(r, 'HELD', t0 + SEC, 'scheduler', `게이트 불충족: ${g.host} ${g.metric}=${v} (max ${g.max})`);
+    r.status = 'HELD';
+    w.heldRun = r;
   }
+}
+
+// 시연판: 주소 플래그는 세계를 만든 뒤에야 안다(index.js가 첫 요청에 넘긴다). 폭주가 꺼진 장면(?surge=0)에서는 대기 큐가 비어 게이트가
+// 걸리지 않았을 것이므로, 보류였던 settle을 발화 직후 돈 것으로 되돌린다(tick이 settle-report까지 이어 돌린다).
+export function summitFlags(w, flags) {
+  if (w.flagsSeen) return;
+  w.flagsSeen = true;
+  const r = w.heldRun;
+  if (!r || flags.surge || r.status !== 'HELD') return;
+  r.events.pop();
+  r.status = 'WAITING';
+  r.plan = { startAt: r.scheduled_at + 1500, endAt: r.scheduled_at + 9500 };
 }
 
 let W = null;
@@ -657,15 +786,19 @@ export function getWorld(now) {
     audit: [],
     trainedAt: Math.floor(base / (10 * MIN)) * 10 * MIN,
     startRun: null,
+    crashRun: null, // lite만: 죽은 체결 서비스를 띄웠던 실행
     quoteRun: null,
     extFail: null,
     batchRun: null,
     batchRuns: [],
+    heldRun: null, // summit만: 리소스 게이트에 걸려 보류된 daily-settle › settle
     procs: [],
   };
   buildHistory(w, w.flows, base);
   buildPast(w, w.flows);
   buildProcs(w, base); // 기존 실행 번호가 바뀌지 않게 지난 이력 뒤에
+  if (SUMMIT) summitOps(w, base);
+  if (SUMMIT) summitHeld(w, base);
   w.incidents = buildIncidents(base);
   w.incSeq = w.incidents.length + 1;
   W = w;
@@ -759,6 +892,8 @@ export function runPublic(r, withTail) {
 }
 
 export function procsOf(r) {
+  // 시연판: 아직 시작하지 않은 실행(지금 실행 직후의 대기 스텝)에는 상주 프로세스가 없다
+  if (SUMMIT && !r.started_at) return 0;
   return r.service || r.status === 'RUNNING' ? 1 : 0;
 }
 
@@ -784,43 +919,91 @@ export function flowLast(w, flow) {
     };
   }
   const latest = Object.keys(steps).map((id) => rows.filter((r) => r.step_id === id).reduce((a, b) => (b.attempt > a.attempt ? b : a)));
+  // 시연판: 행이 없는 스텝(실행 뒤 정의에 더해진 스텝)은 매니저(sched.FlowRunStatus)처럼 무시한다 — 스텝을 더해 저장한 플로우가 '실행 중'에 묶이지 않게
   let status = 'RUNNING';
   if (latest.some((r) => DEAD(r, flow))) status = 'FAILED';
-  else if (latest.length === flow.steps.length && latest.every((r) => r.status === 'SUCCEEDED')) status = 'SUCCEEDED';
+  else if ((SUMMIT || latest.length === flow.steps.length) && latest.every((r) => r.status === 'SUCCEEDED')) status = 'SUCCEEDED';
   const terminal = status !== 'RUNNING';
   return {
     flow_run_id: fr.id,
     trigger: fr.trigger,
     status,
     started_at: fr.started_at,
-    ended_at: terminal ? Math.max(...latest.map((r) => r.ended_at || 0)) : 0,
+    ended_at: terminal ? Math.max(latest.length ? 0 : fr.started_at, ...latest.map((r) => r.ended_at || 0)) : 0,
     steps,
   };
 }
 
 // 시간이 흘러 예정된 상태 변화(재실행·수동 실행)를 반영한다.
 export function tick(w, now) {
-  for (const r of w.runs) {
-    const p = r.plan;
-    if (!p) continue;
-    if (r.status === 'WAITING' && now >= p.startAt) {
-      ev(r, 'DISPATCHED', p.startAt - 500, 'scheduler', '');
-      ev(r, 'RUNNING', p.startAt, 'agent:' + r.host, '');
-      r.status = 'RUNNING';
-      r.started_at = p.startAt;
-      r.log_tail = `(I) ${r.step_id} 시작\n`;
-    }
-    if (r.status === 'RUNNING' && p.endAt && now >= p.endAt) {
-      ev(r, 'SUCCEEDED', p.endAt, 'agent:' + r.host, '');
-      r.status = 'SUCCEEDED';
-      r.ended_at = p.endAt;
-      r.exit_code = 0;
-      r.peak_cpu_pct = Math.round(r.job_cpu * 10) / 10;
-      r.peak_rss_mb = Math.round(r.job_mem * 10) / 10;
-      r.log_tail += `(I) ${r.step_id} 끝남\n`;
-      r.plan = null;
+  // 체험판은 후행을 풀어 준 뒤 한 번 더 훑는다(오래 만에 불려도 이어진 스텝이 한 번에 따라오게). full은 한 번
+  for (let pass = 0, again = true; again && pass < (DEMO ? 8 : 1); pass++) {
+    again = false;
+    for (const r of w.runs) {
+      const p = r.plan;
+      if (!p) continue;
+      if (r.status === 'WAITING' && now >= p.startAt) {
+        if (SUMMIT) {
+          // 시연판: 선행이 모두 성공한 뒤에만 시작한다(지금 실행한 플로우의 스텝을 강제 종료하면 후행은 대기로 남고,
+          // 그 스텝을 재실행 · 강제 OK로 넘기면 그 끝에서 1.5초 뒤 이어 돈다)
+          const de = depsEnd(w, r);
+          if (de === null) continue;
+          if (de + 1500 > p.startAt) { p.endAt = de + 1500 + (p.endAt - p.startAt); p.startAt = de + 1500; }
+          if (now < p.startAt) continue;
+        }
+        ev(r, 'DISPATCHED', p.startAt - 500, 'scheduler', '');
+        ev(r, 'RUNNING', p.startAt, 'agent:' + r.host, '');
+        r.status = 'RUNNING';
+        r.started_at = p.startAt;
+        r.log_tail = `(I) ${r.step_id} 시작\n`;
+      }
+      if (r.status === 'RUNNING' && p.endAt && now >= p.endAt) {
+        ev(r, 'SUCCEEDED', p.endAt, 'agent:' + r.host, '');
+        r.status = 'SUCCEEDED';
+        r.ended_at = p.endAt;
+        r.exit_code = 0;
+        r.peak_cpu_pct = Math.round(r.job_cpu * 10) / 10;
+        r.peak_rss_mb = Math.round(r.job_mem * 10) / 10;
+        r.log_tail += `(I) ${r.step_id} 끝남\n`;
+        r.plan = null;
+        if (DEMO && releaseAfter(w, r, r.ended_at)) again = true;
+        if (SUMMIT) again = true; // 시연판: 이 스텝이 끝나기를 기다리던 예정 스텝(위의 선행 검사)이 같은 호출에서 이어지게 한 번 더 훑는다
+      }
     }
   }
+}
+
+// 선행 스텝들의 최신 시도가 모두 성공이면 그 가운데 가장 늦게 끝난 때(선행이 없으면 0), 아니면 null
+function depsEnd(w, r) {
+  const flow = flowOf(w, r.flow_id);
+  const step = flow && flow.steps.find((s) => s.id === r.step_id);
+  let end = 0;
+  for (const d of (step && step.depends) || []) {
+    const x = w.runs.filter((y) => y.flow_run_id === r.flow_run_id && y.step_id === d).reduce((a, b) => (!a || b.attempt > a.attempt ? b : a), null);
+    if (!x) continue; // 실행 뒤 정의에 더해진 선행은 무시
+    if (x.status !== 'SUCCEEDED') return null;
+    end = Math.max(end, x.ended_at || 0);
+  }
+  return end;
+}
+
+// 체험판: 재실행한 시도가 성공하면 막혀 있던 후행 스텝(선행이 모두 성공한 WAITING)이 이어서 돌아 플로우 실행이 끝까지 간다.
+// 강제 OK의 후행 진행(ops.js releaseSuccessors)과 같은 규칙이고, 여기서는 시도가 끝난 시각(at)부터 잰다.
+function releaseAfter(w, r, at) {
+  const flow = flowOf(w, r.flow_id);
+  if (!flow) return false;
+  const rows = w.runs.filter((x) => x.flow_run_id === r.flow_run_id);
+  const latest = (id) => rows.filter((x) => x.step_id === id).reduce((a, b) => (!a || b.attempt > a.attempt ? b : a), null);
+  let any = false;
+  for (const s of flow.steps) {
+    const x = latest(s.id);
+    if (!x || x.status !== 'WAITING' || x.plan) continue;
+    if ((s.depends || []).every((d) => latest(d) && latest(d).status === 'SUCCEEDED')) {
+      x.plan = { startAt: at + 1500, endAt: at + 5500 };
+      any = true;
+    }
+  }
+  return any;
 }
 
 // 플로우를 지금 실행한다(수동 실행). 스텝 행은 한꺼번에 WAITING으로 만들고 시간에 따라 진행한다.

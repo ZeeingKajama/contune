@@ -220,7 +220,10 @@ export function alertTarget(a, panels) {
     case 'risk': return '#risk';
     case 'exit': return `#exit/${encodeURIComponent(String(a.dedup_key || '').replace(/^exit:/, ''))}`;
     default: {
-      const p = (panels || []).find((x) => x.group === a.group) || (panels || []).find((x) => inGroup(a.group, x.group));
+      // 타일 알림의 키는 "tile:<패널>/<타일 제목>"(매니저 alert.go): 같은 그룹에 패널이 여럿이어도 알림을 낸 패널로 간다
+      const m = a.kind === 'tile' ? /^tile:([^/]+)\//.exec(String(a.dedup_key || '')) : null;
+      const p = (m && (panels || []).find((x) => x.id === m[1]))
+        || (panels || []).find((x) => x.group === a.group) || (panels || []).find((x) => inGroup(a.group, x.group));
       return p ? `#biz/${encodeURIComponent(p.id)}` : '#biz';
     }
   }

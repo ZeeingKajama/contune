@@ -1,7 +1,8 @@
 // mock.handle(path, opts) → Promise<{status, body, contentType?}>
 // path는 '/api/v1' 뒤 경로(쿼리 포함), opts는 {method, body, now, search}. DOM 없이 import된다.
 import { parseQuery } from './util.js';
-import { getWorld, reset as resetWorld, tick } from './world.js';
+import { DEMO, SUMMIT } from './profile.js';
+import { getWorld, reset as resetWorld, tick, summitFlags } from './world.js';
 import * as core from './core.js';
 import * as server from './server.js';
 import * as ops from './ops.js';
@@ -23,7 +24,7 @@ function pageFlags(opts, q) {
   const get = (k) => (q.get(k) !== null ? q.get(k) : s.get(k));
   return {
     surge: get('surge') !== '0',
-    llm: get('llm') === '1',
+    llm: DEMO ? get('llm') !== '0' : get('llm') === '1', // 체험판은 llm=0이 아니면 켠다(브리핑 · 초안이 AI로 보이게)
     rule: get('rule') === '1',
     editor: get('editor') !== '0',
     role: get('role'),
@@ -45,8 +46,9 @@ export async function handle(path, opts = {}) {
   const { pathname, q } = parseQuery(path);
   const now = opts.now || Date.now();
   const w = getWorld(now);
-  tick(w, now);
   const flags = pageFlags(opts, q);
+  if (SUMMIT) summitFlags(w, flags);
+  tick(w, now);
   const raw = opts.body;
   const c = {
     w,
@@ -72,7 +74,12 @@ export async function handle(path, opts = {}) {
     const mm = re.exec(pathname);
     if (mm) {
       try {
-        return fn(c, mm);
+        if (!SUMMIT) return fn(c, mm);
+        // 시연판: 이 요청이 남긴 감사 기록에 그때 로그인한 사용자를 적어 둔다(역할을 바꿔 다시 로그인해도 앞 조작의 '누가'가 바뀌지 않게, audit.js)
+        const n0 = w.audit.length, who = auth.userId();
+        const res = fn(c, mm);
+        for (let i = n0; i < w.audit.length; i++) if (w.audit[i].by === undefined) w.audit[i].by = who;
+        return res;
       } catch (e) {
         return { status: 500, body: { error: `mock 오류: ${e.message}` } };
       }

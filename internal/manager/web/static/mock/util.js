@@ -291,6 +291,11 @@ export function dumpFlow(f) {
       L.push(`    retry: { count: ${s.retry.count || 0}, interval: ${dumpScalar(s.retry.interval || '1m')} }`);
     }
     if (s.profile) L.push('    profile: true');
+    // 리소스 게이트(시연판의 daily-settle › settle만 가진다): 실제 flows/정산/daily-settle.yaml과 같은 꼴
+    if (s.gate && s.gate.length) {
+      L.push('    gate:');
+      for (const g of s.gate) L.push(`      - { ${Object.entries(g).map(([k, v]) => `${k}: ${dumpScalar(v)}`).join(', ')} }`);
+    }
   }
   return L.join('\n') + '\n';
 }

@@ -72,6 +72,30 @@
 
 화면은 `http://localhost:8080/`(실제 API), `http://localhost:8080/?mock=1`(mock). 시연 계정은 `admin/eum-admin`(관리), `operator/eum-operator`(운영), `viewer/eum-viewer`(조회)이고, `demo.sh`는 `EUM_USER`·`EUM_PASS`(기본 admin)로 로그인합니다. 운영 계정의 해시는 `printf '%s' '<비밀번호>' | eum passwd`로 만듭니다.
 
+**체험판(심사위원용, 11-12):** 백엔드 없이 뜨는 정적 사이트입니다. mock을 서버 9대 · 플로우 7개 · 줄거리 하나(주문 폭주 → 체결 지연 → 원인 후보 함수)로 줄인 `lite` 프로필에, 화면 위 가이드(사용 예 다섯 개를 단계별로)를 얹었습니다. 데이터는 모의이고 AI 문장은 준비된 예시입니다.
+
+    deploy/judge_demo.sh                              # .run/judge-demo/ (mock · lite 고정)
+    python3 -m http.server 8090 -d .run/judge-demo    # 아무 웹 서버에나 폴더째 올리면 된다
+
+개발 중에는 `http://localhost:8080/?mock=1&profile=lite`로 같은 화면을 봅니다. 프로필은 `internal/manager/web/static/mock/profile.js`, 가이드는 `static/guide/`(엔진 `guide.js`, 내용 `tours/*.js`)입니다. 기본(`full`) mock과 실제 화면은 바뀌지 않습니다.
+
+**써밋 시연판(테크서밋 부스용, 11-17):** 백엔드 없이 뜨는 정적 사이트입니다. 팀원이 직접 조작하며 전 기능을 일주합니다. mock 전체 세계(서버 46대 · 플로우 41개 · 줄거리 전부)에 체험판의 조작 반영 · 화면 간 숫자 맞춤을 켠 `summit` 프로필에, 발표자용 순서 가이드(큐 카드 · 목차 · 자동 재생)를 얹었습니다. 데이터는 모의이고 AI 문장은 준비된 예시입니다.
+
+    deploy/summit_demo.sh                              # .run/summit-demo/ (mock · summit 고정)
+    python3 -m http.server 8091 -d .run/summit-demo    # 아무 웹 서버에나 폴더째 올리면 된다
+
+| 키 | 동작 |
+|---|---|
+| `→` `Space` `PageDown` | 다음 장면(누르는 장면이면 대신 누르고 다음) |
+| `←` | 이전 장면 |
+| `1`~`9` | 그 번호 막의 첫 장면 |
+| `m` | 목차 |
+| `h` | 가이드 숨기기 · 보이기 |
+| `a` | 자동 재생 |
+| `r` | 처음 상태로 |
+
+세계의 시각이 페이지를 연 때에 묶여 있어, 오래 켜 두면 `r`로 처음 상태로 돌립니다(10분이 넘으면 위 막대에 `↻ n분`). 개발 중에는 `http://localhost:8080/?mock=1&profile=summit`으로 같은 화면을 봅니다. 가이드는 `static/guide/stage.js`(엔진) · `summit.js`(내용)입니다. 체험판과 다른 점은 세계 크기(lite → full)와 가이드(단계별 따라 하기 → 발표자가 넘기는 순서)이고, 기본(`full`) mock · 체험판 · 실제 화면의 동작은 바뀌지 않습니다. 함께 고친 화면 문제는 실제 화면에도 들어갑니다: 화면을 떠날 때 `#page`에 남던 클래스(서버 · 타임머신 · 로그 수집), 어두운 테마의 흰 스크롤 막대(`color-scheme`), 테마를 바꾼 뒤 옛 색으로 남던 차트, 타임머신 자동 선택이 앞날 구간을 잡던 것, 시도가 하나뿐인 스텝 서랍의 글자 `null`, 스텝을 더해 저장하면 지난 실행이 "실행 중"으로 셈해지던 것(매니저와 같은 규칙으로), 타일 알림이 같은 그룹의 첫 패널로 가던 것(알림을 낸 패널로).
+
 **LLM 켜기(관제 AI 브리핑·원인 추적 · 보드 AI 초안 · 종료 보고서 분석, 11-12):** 기본은 꺼짐(none)이고, 꺼져 있어도 프롬프트 복사와 답 붙여넣기는 됩니다.
 
     EUM_LLM=claude-cli EUM_LLM_MODEL=claude-opus-5-5 deploy/demo.sh up   # API 키 없이: 이 PC에 로그인된 Claude CLI(claude -p)

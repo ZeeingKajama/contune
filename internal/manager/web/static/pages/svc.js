@@ -541,6 +541,7 @@ async function renderTM(root, id, query) {
   drawHead(); drawKpis(); drawTools(); drawTabs();
   loadLineage(true);
   buildCharts(await fetchAll());
+  recolor = async () => { const d = await fetchAll(); if (tracks.isConnected) buildCharts(d); };
   await drawFlames();
   loadLogs();
 
@@ -563,7 +564,13 @@ async function renderTM(root, id, query) {
   }, 5000));
 }
 
+// 테마가 바뀌면(app.js) 차트만 새로 만든다. 차트는 만들 때 색을 읽는다. 고른 A·B 구간과 탭은 그대로 둔다.
+// → 맡았으면 true(false면 app.js가 화면을 다시 그린다)
+let recolor = null;
+export function retheme() { if (!recolor) return false; recolor(); return true; }
+
 export function dispose() {
+  recolor = null;
   for (const s of timers) s();
   timers = [];
   for (const c of charts) { try { c.destroy(); } catch (e) { /* 무시 */ } }

@@ -1,6 +1,7 @@
 // 위험 요인 확인 표시(hold) mock — 계약: docs/cards/R-risk-hold.md
 // 미확인 지수는 용인된 요인의 기여 비율만큼 원래 지수를 낮춘 근사값이다(서버는 같은 모델로 다시 매긴다).
 import { MIN, HOUR, DAY, KST } from './util.js';
+import { SUMMIT } from './profile.js';
 
 export const FEATURE_TITLE = {
   cpu_max: '최대 서버 CPU 사용률', mem_max: '최대 메모리 사용률', hosts_hot: 'CPU 70% 초과 서버 수', queue: '대기 큐',
@@ -44,6 +45,12 @@ function seedHolds(w, incidents) {
   }
   const inc = incidents.find((i) => i.title === '주문 접수 오류');
   if (inc) push('queue', inc.start - 11 * MIN, 40 * MIN, '장 시작 직후 주문 몰림', 'user:operator', '한도 초과 2,410', 1800);
+  // 시연판: 확인 중(ack) 한 건 — 5시간 전 match-04 CPU 경고(해소된 알림 21) 때 운영자가 확인 중으로 표시했고 30분 뒤 만료됐다
+  if (SUMMIT && w.hosts.some((h) => h.id === 'match-04')) {
+    const at = w.base - 5 * HOUR + 2 * MIN;
+    out.push({ id: id++, feature: 'cpu_max', kind: 'ack', reason: 'match-04 CPU 경고 확인 중', value: 72, limit: r2(72 * 1.2), at, by: 'user:operator', until: at + 30 * MIN,
+      ended_at: at + 30 * MIN, ended_by: 'system', end_note: '만료' });
+  }
   return out.sort((a, b) => b.at - a.at);
 }
 

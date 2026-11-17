@@ -1,7 +1,8 @@
 // /logs 와 /export/* (text/plain·csv)
 import { SEC, MIN, DAY, fmtKst, fmtN, hash32 } from './util.js';
 import { groupMatch, runPublic } from './world.js';
-import { bizAt, quoteAt, quoteRate } from './signal.js';
+import { bizAt, quoteAt, quoteRate, surgeRef, surgeStart } from './signal.js';
+import { LITE, SUMMIT } from './profile.js';
 import { seriesQuery, profileShape, shapeFor } from './core.js';
 
 const ok = (body, status = 200) => ({ status, body });
@@ -57,7 +58,8 @@ export function logEvents(c, f) {
   const from = f.from || to - DAY;
   const top = Math.min(to, c.now);
   const all = [];
-  const surgeFrom = c.sig.surge ? c.now - 150 * SEC : Infinity;
+  // 폭주 줄은 기준 시각 150초 전부터(full은 지금 기준, 체험판은 base에 고정 — signal.js surgeRef)
+  const surgeFrom = c.sig.surge ? surgeRef(c.sig) - 150 * SEC : Infinity;
   if (c.sig.surge) {
     const t1 = Math.floor(top / (5 * SEC)) * 5 * SEC;
     for (let t = t1; t >= Math.max(from, surgeFrom); t -= 5 * SEC) all.push(...surgeLines(c, t, 0));
@@ -79,8 +81,8 @@ export function logEvents(c, f) {
       message: `(W) ${fmtKst(ts)} ORDERBOOK 호가 정리 지연 ${12 + (hh % 40)}ms`,
     });
   }
-  // 시세 서비스: 지난 시세 폭주 동안
-  if (c.w.quoteRun) {
+  // 시세 서비스: 지난 시세 폭주 동안(체험판에는 지난 시세 폭주가 없다)
+  if (c.w.quoteRun && !LITE) {
     const qs = c.sig.base - 14 * MIN;
     for (let t = Math.ceil(Math.max(from, qs) / (5 * SEC)) * 5 * SEC; t <= Math.min(top, qs + 3 * MIN); t += 5 * SEC) all.push(...quoteLines(c, t));
   }
@@ -117,7 +119,12 @@ function filterOf(c) {
 }
 
 function logs(c) {
-  return ok({ events: logEvents(c, filterOf(c)) });
+  const f = filterOf(c);
+  const events = logEvents(c, f);
+  // 시연판: 실행 ID로 물으면 그 실행이 시작한 뒤의 줄만(실행 타임머신의 애플리케이션 로그 탭에 시작 전 줄이 섞이지 않게).
+  // 서비스 주인 키로 온 물음(services.js가 svcOwner를 붙여 넘긴다)은 그대로 둔다
+  const run = SUMMIT && f.exec_id && !c.svcOwner ? c.w.runs.find((r) => r.exec_id === f.exec_id) : null;
+  return ok({ events: run && run.started_at ? events.filter((e) => e.ts >= run.started_at) : events });
 }
 
 function exportSamples(c) {
@@ -144,7 +151,7 @@ function exportProfile(c) {
   const to = num(c.q.get('to')) || c.now;
   const from = num(c.q.get('from')) || to - 20 * SEC;
   const run = c.w.runs.find((x) => x.exec_id === c.q.get('exec_id'));
-  const [shape, busy] = (run && shapeFor(c, run, from, to)) || [profileShape(from, to, c.now, c.sig.surge), 1];
+  const [shape, busy] = (run && shapeFor(c, run, from, to)) || [profileShape(from, to, c.now, c.sig.surge, surgeStart(c.sig)), 1];
   const total = Math.round(((to - from) / 1000) * 49 * busy);
   return text(shape.map(([f, pct]) => `${f} ${Math.round((total * pct) / 100)}`).join('\n') + '\n');
 }

@@ -1,7 +1,11 @@
 // 수집 설정 mock (계약: docs/cards/L-collect.md "화면 API").
 // GET/PUT/DELETE /collect · /collect/hosts/{host} · POST /collect/{reload,discover,peek} · GET /collect/history
 // 권한은 mock/auth.js의 기본 규칙(조회는 GET, 나머지는 관리)을 그대로 쓴다.
+// 체험판(profile.js의 lite): 적용 대상 넷(all · group:매매체결 · host:match-01 · group:정보분배), 읽지 못한 파일 없음, 서버는 모두 '적용됨'.
+// 저장 · 삭제는 감사 기록(c.w.audit)에도 남고, 변경 이력 씨앗의 시각은 세계를 만든 때(base) 기준이다(감사 기록 씨앗과 같은 줄).
 import { MIN, hash32 } from './util.js';
+import { DEMO, SUMMIT, pick, pickDemo } from './profile.js';
+import { userId } from './auth.js';
 
 const ok = (body, status = 200) => ({ status, body });
 const err = (status, msg, extra) => ({ status, body: { error: msg, ...(extra || {}) } });
@@ -18,10 +22,10 @@ const QUOTE_METRICS = [
 const LOGW = [{ re: '^\\(E\\)', level: 'error' }, { re: '^\\(W\\)', level: 'warn' }];
 
 let S = null;
-function state(now) {
-  if (S) return S;
+// 처음의 설정 파일들(프로필마다 고정)
+function seedSets() {
   const mk = (scope, file, logs) => ({ scope, file, logs, sha: hex(JSON.stringify(logs) + scope, 64) });
-  const sets = [
+  const all5 = [
     mk('all', 'all.yaml', [{ name: 'step', path: '{log_dir}/step.{exec_id}.log', match: [{ re: '^ERROR', level: 'error' }, { re: '^WARN', level: 'warn' }] }]),
     mk('group:매매체결', 'group-매매체결.yaml', [{ name: 'matching', path: '{log_dir}/matching_svc.{exec_id}.log', match: LOGW }]),
     mk('host:match-01', 'host-match-01.yaml', [
@@ -33,20 +37,40 @@ function state(now) {
     mk('group:정보분배', 'group-정보분배.yaml', [{ name: 'quote', path: '{log_dir}/quote_feed.log', match: [], metrics: QUOTE_METRICS }]),
     mk('host:dw-03', 'host-dw-03.yaml', [{ name: 'etl-load', path: '/data/etl/load_*.log', match: [{ re: 'ORA-\\d+', level: 'error' }] }]),
   ];
+  // 체험판: 세계에 없는 서버(dw-03)의 설정과 읽지 못한 파일은 없다
+  return pick(all5, all5.filter((x) => x.scope !== 'host:dw-03'));
+}
+function state(now) {
+  if (S) return S;
   S = {
-    sets,
-    errors: [{ file: 'group-청산결제.yaml', msg: "로그 파일 'settle'(1번째) 규칙 2 정규식: 정규식(RE2)을 해석하지 못함: error parsing regexp: missing closing ): `^(E`" }],
+    sets: seedSets(),
+    errors: pick([{ file: 'group-청산결제.yaml', msg: "로그 파일 'settle'(1번째) 규칙 2 정규식: 정규식(RE2)을 해석하지 못함: error parsing regexp: missing closing ): `^(E`" }], []),
     pendingUntil: {}, seen: {},
-    audit: [
-      { id: 3, ts: now - 95 * MIN, actor: 'user:admin', action: 'collect.save', target: 'group:매매체결', detail: `group-매매체결.yaml ${hex('g0')} → ${hex('g1')} 로그 파일 1개` },
-      { id: 2, ts: now - 26 * 60 * MIN, actor: 'user:operator', action: 'collect.save', target: 'all', detail: `all.yaml ${hex('a0')} → ${hex('a1')} 로그 파일 1개` },
-      { id: 1, ts: now - 30 * 60 * MIN, actor: 'user:admin', action: 'collect.save', target: 'all', detail: `all.yaml - → ${hex('a0')} 로그 파일 1개` },
-    ],
-    auditSeq: 3,
+    audit: seedHistory(now),
+    auditSeq: SUMMIT ? 4 : 3,
   };
   return S;
 }
+// 변경 이력 씨앗(최신 먼저). 체험판의 감사 기록(audit.js)도 같은 줄을 쓴다. 체험판은 모두 관리 계정(로그 수집 변경은 관리 권한)
+export function seedHistory(now) {
+  // 체험판: 마지막 저장의 새 sha는 지금 설정 파일의 sha(다음 저장의 '옛 sha'와 이어지게)
+  const cur = (scope, k) => pickDemo(hex(k), seedSets().find((x) => x.scope === scope).sha.slice(0, 8));
+  // 시연판: 시세 로그에서 숫자를 뽑아 붙인 저장(정보분배)이 하나 더 있다. id는 오래된 것부터
+  if (SUMMIT) return [
+    { id: 4, ts: now - 95 * MIN, actor: 'user:admin', action: 'collect.save', target: 'group:매매체결', detail: `group-매매체결.yaml ${hex('g0')} → ${cur('group:매매체결', 'g1')} 로그 파일 1개` },
+    { id: 3, ts: now - 188 * MIN, actor: 'user:admin', action: 'collect.save', target: 'group:정보분배', detail: `group-정보분배.yaml - → ${cur('group:정보분배', 'q1')} 로그 파일 1개` },
+    { id: 2, ts: now - 26 * 60 * MIN, actor: 'user:admin', action: 'collect.save', target: 'all', detail: `all.yaml ${hex('a0')} → ${cur('all', 'a1')} 로그 파일 1개` },
+    { id: 1, ts: now - 30 * 60 * MIN, actor: 'user:admin', action: 'collect.save', target: 'all', detail: `all.yaml - → ${hex('a0')} 로그 파일 1개` },
+  ];
+  return [
+    { id: 3, ts: now - 95 * MIN, actor: 'user:admin', action: 'collect.save', target: 'group:매매체결', detail: `group-매매체결.yaml ${hex('g0')} → ${cur('group:매매체결', 'g1')} 로그 파일 1개` },
+    { id: 2, ts: now - 26 * 60 * MIN, actor: pickDemo('user:operator', 'user:admin'), action: 'collect.save', target: 'all', detail: `all.yaml ${hex('a0')} → ${cur('all', 'a1')} 로그 파일 1개` },
+    { id: 1, ts: now - 30 * 60 * MIN, actor: 'user:admin', action: 'collect.save', target: 'all', detail: `all.yaml - → ${hex('a0')} 로그 파일 1개` },
+  ];
+}
 export function reset() { S = null; }
+// 씨앗의 기준 시각: 체험판은 세계를 만든 때, 아니면 처음 부른 때
+const seedNow = (c) => (DEMO && c.w ? c.w.base : c.now);
 
 const chain = (id, group) => {
   const segs = String(group || '').split('/').filter(Boolean);
@@ -68,7 +92,8 @@ const revOf = (logs) => hex(JSON.stringify(logs.map(({ name, path, match, metric
 
 // 서버마다 정해 둔 상황: 대부분 적용됨, 하나는 적용 대기, 하나는 꺼짐, 하나는 실패(설정을 받지 못함), 하나는 모름.
 // 일부 적용은 정해 두지 않는다: 경로가 허용 폴더(ROOTS) 밖인 로그 파일이 있으면 그 서버가 건너뛴다(실제 에이전트와 같게).
-const SPECIAL = { 'match-03': 'pending', 'ext-02': 'disabled', 'feed-04': 'failed', 'ext-04': 'unknown' };
+// 체험판: 정해 둔 상황 없음(서버 9대 모두 적용됨. 저장 · 삭제 직후 3초의 적용 대기는 그대로)
+const SPECIAL = pick({ 'match-03': 'pending', 'ext-02': 'disabled', 'feed-04': 'failed', 'ext-04': 'unknown' }, {});
 const LOCAL = [{ name: 'agent', path: '{log_dir}/eum-agent.log', match: [{ re: 'level=error', level: 'error' }], origin: 'local' }];
 const ROOTS = ['/var/lib/eum/logs'];
 // dw-01만 /data/etl을 허용해 두었다: 거기서 파일을 골라 그룹에 저장하면 마법사가 나머지 서버는 건너뛴다고 미리 알린다.
@@ -117,7 +142,7 @@ function statusOf(row, logs) {
 }
 
 function list(c) {
-  const s = state(c.now);
+  const s = state(seedNow(c));
   return ok({
     editable: true, dir: '/collect',
     sets: s.sets.map(({ scope, file, sha, logs }) => ({ scope, file, sha, logs })),
@@ -126,7 +151,7 @@ function list(c) {
   });
 }
 function hostDetail(c, m) {
-  const s = state(c.now);
+  const s = state(seedNow(c));
   const h = c.w.hosts.find((x) => x.id === decodeURIComponent(m[1]));
   if (!h) return err(404, '서버를 찾을 수 없음');
   const row = hostRow(s, h, c.now);
@@ -175,7 +200,13 @@ function fileFor(s, scope) {
   return f;
 }
 function pushAudit(s, c, action, target, detail) {
-  s.audit.unshift({ id: ++s.auditSeq, ts: c.now, actor: 'user:admin', action, target, detail });
+  s.audit.unshift({ id: ++s.auditSeq, ts: c.now, actor: DEMO ? `user:${userId()}` : 'user:admin', action, target, detail });
+  // 체험판: 감사 기록에도 남긴다(ops.js가 쌓는 모양)
+  if (DEMO && c.w && c.w.audit) c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor: 'user:web(127.0.0.1)', action, target, detail });
+}
+// 시연판: 다시 읽기 · 로그 파일 찾기 · 미리보기도 감사 기록에 남긴다(매니저 collect/http.go와 같은 글. 로그 수집 화면의 변경 이력은 저장 · 삭제뿐이라 거기에는 넣지 않는다)
+function note(c, action, target, detail) {
+  if (SUMMIT && c.w && c.w.audit) c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor: 'user:web(127.0.0.1)', action, target, detail });
 }
 // 저장·삭제한 범위에 걸린 서버는 3초 동안 이전 판을 쓰는 적용 대기로 둔다.
 function markPending(s, c, scope) {
@@ -187,7 +218,7 @@ function markPending(s, c, scope) {
   }
 }
 function put(c) {
-  const s = state(c.now);
+  const s = state(seedNow(c));
   const scope = c.q.get('scope') || '';
   if (!validScope(scope)) return err(400, '적용 대상 형식이 맞지 않음');
   const b = c.json();
@@ -207,7 +238,7 @@ function put(c) {
   return ok({ scope, file: set.file, sha, logs: set.logs });
 }
 function del(c) {
-  const s = state(c.now);
+  const s = state(seedNow(c));
   const scope = c.q.get('scope') || '';
   const i = s.sets.findIndex((x) => x.scope === scope);
   if (i < 0) return err(404, '그 적용 대상의 설정이 없음');
@@ -218,11 +249,12 @@ function del(c) {
   return { status: 204, body: null };
 }
 function reload(c) {
-  const s = state(c.now);
+  const s = state(seedNow(c));
+  note(c, 'collect.reload', 'collect', `적용 대상 ${s.sets.length}개, 읽지 못한 파일 ${s.errors.length}개`);
   return ok({ sets: s.sets.length, errors: s.errors });
 }
 function history(c) {
-  const s = state(c.now);
+  const s = state(seedNow(c));
   const scope = c.q.get('scope') || '';
   const limit = Number(c.q.get('limit')) || 50;
   return ok({ entries: s.audit.filter((e) => !scope || e.target === scope).slice(0, limit) });
@@ -231,24 +263,37 @@ function history(c) {
 // ---- 에이전트에 시키는 일 ----
 // ago = 몇 분 전에 고쳤는지
 const FILES = [
-  { path: '/var/lib/eum/logs/matching_svc.01JC8M2Q4T9XK0A7V5N3B6D1ER.log', size: 48213377, ago: 0.1, origin: 'proc', pid: 4121, comm: 'matching_svc', flow: 'market-open/start-matching', suggest: '{log_dir}/matching_svc.{exec_id}.log', allowed: true, name: 'matching' },
+  { path: '/var/lib/eum/logs/matching_svc.01JC8M2Q4T9XK0A7V5N3B6D1ER.log', size: 48213377, ago: 0.1, origin: 'proc', pid: pickDemo(4121, 3121), comm: 'matching_svc', flow: 'market-open/start-matching', suggest: '{log_dir}/matching_svc.{exec_id}.log', allowed: true, name: 'matching' },
   { path: '/var/lib/eum/logs/feed_tick.20261110.log', size: 912884112, ago: 0.05, origin: 'root', suggest: '{log_dir}/feed_tick.*.log', allowed: true },
   { path: '/var/lib/eum/logs/gw/order_0003.log', size: 5821044, ago: 2, origin: 'root', suggest: '{log_dir}/gw/order_*.log', allowed: true, name: 'order-gw' },
-  { path: '/var/lib/eum/logs/settle.01JC9A4D8R1MB6Y0S3W2K7N5JF.log', size: 220311, ago: 14, origin: 'proc', pid: 4388, comm: 'settle', flow: 'daily-settle/settle', suggest: '{log_dir}/settle.{exec_id}.log', allowed: true },
+  // 체험판: daily-settle은 아직 돌지 않았다 → 프로세스가 연 파일의 둘째 예는 fetch-ref › pull-ref가 남긴 ref_cache(세계의 그 상주 프로세스)
+  pick({ path: '/var/lib/eum/logs/settle.01JC9A4D8R1MB6Y0S3W2K7N5JF.log', size: 220311, ago: 14, origin: 'proc', pid: 4388, comm: 'settle', flow: 'daily-settle/settle', suggest: '{log_dir}/settle.{exec_id}.log', allowed: true },
+    { path: '/var/lib/eum/logs/ref_cache.01JC9A4D8R1MB6Y0S3W2K7N5JF.log', size: 220311, ago: 14, origin: 'proc', pid: 5210, comm: 'ref_cache', flow: 'fetch-ref/pull-ref', suggest: '{log_dir}/ref_cache.{exec_id}.log', allowed: true }),
   { path: '/var/lib/eum/logs/quote_feed.log', size: 3120441, ago: 0.02, origin: 'root', suggest: '{log_dir}/quote_feed.log', allowed: true, name: 'quote' },
   { path: '/var/log/syslog', size: 3318002, ago: 0.02, origin: 'syslog', suggest: '/var/log/syslog', allowed: true },
   { path: '/data/etl/load_2026-11-10.log', size: 7345120, ago: 30, origin: 'root', suggest: '/data/etl/load_*.log', allowed: false },
 ];
+// 체험판: 예시 파일 이름 · 줄에 박힌 날짜(2026-11-10)를 오늘(화면이 보이는 지역 시간)로 바꾼다
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function dated(c) {
+  if (!DEMO) return (v) => v;
+  const d = new Date(c.now), p2 = (n) => String(n).padStart(2, '0');
+  const ymd = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  return (v) => String(v).split('2026-11-10').join(ymd).split('20261110').join(ymd.split('-').join(''))
+    .split('Nov 10').join(`${MONTHS[d.getMonth()]} ${String(d.getDate()).padStart(2, ' ')}`);
+}
 function discover(c) {
   const b = c.json();
-  const s = state(c.now);
+  const s = state(seedNow(c));
   const h = b && c.w.hosts.find((x) => x.id === b.host);
   if (!h) return err(404, '서버를 찾을 수 없음');
   if (SPECIAL[h.id] === 'disabled') return err(422, '원격 설정이 꺼져 있습니다(에이전트 YAML remote.enabled)');
   if (SPECIAL[h.id] === 'unknown') return err(504, '에이전트가 10초 안에 답하지 않음');
   const names = new Set(effective(s, h.id, h.group).map((l) => l.name));
+  const day = dated(c);
+  note(c, 'collect.discover', 'host:' + h.id, `후보 ${FILES.length}개`);
   return ok({
-    files: FILES.map(({ ago, name, ...f }) => ({ ...f, mtime: Math.round(c.now - ago * MIN), tracked: name && names.has(name) ? name : undefined })),
+    files: FILES.map(({ ago, name, ...f }) => ({ ...f, path: day(f.path), mtime: Math.round(c.now - ago * MIN), tracked: name && names.has(name) ? name : undefined })),
   });
 }
 const LINES = [
@@ -296,8 +341,10 @@ function peek(c) {
   const n = Math.max(1, Math.min(500, Number(b.lines) || 200));
   const quote = /quote/.test(path);
   const base = /syslog/.test(path) ? SYSLOG : LINES;
-  const lines = Array.from({ length: Math.min(n, 48) }, (_, i) => (quote ? quoteLine(i) : base[i % base.length]));
-  const file = path.replace('{log_dir}', '/var/lib/eum/logs').replace('{exec_id}', '01JC8M2Q4T9XK0A7V5N3B6D1ER').replace('*', '20261110');
+  const day = dated(c);
+  const lines = Array.from({ length: Math.min(n, 48) }, (_, i) => day(quote ? quoteLine(i) : base[i % base.length]));
+  const file = day(path.replace('{log_dir}', '/var/lib/eum/logs').replace('{exec_id}', '01JC8M2Q4T9XK0A7V5N3B6D1ER').replace('*', '20261110'));
+  note(c, 'collect.peek', 'host:' + h.id, `${file} ${lines.length}줄`);
   return ok({ file, lines, size: 48213377, rate: /tick/.test(path) ? 870 : quote ? 1.1 : 12.5 });
 }
 

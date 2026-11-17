@@ -422,6 +422,8 @@ export function mountBoard(host, dash, opts = {}) {
       kick();
     },
     refresh() { if (gone) return; dirty = true; kick(); },
+    // 테마가 바뀐 뒤: 틀은 두고 몸통만 새로 그린다(차트는 만들 때 색을 읽는다)
+    recolor() { if (gone) return; for (const f of frames.values()) clear(f); paint(); },
     range,
     dispose() {
       if (gone) return;

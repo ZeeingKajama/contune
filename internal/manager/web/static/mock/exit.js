@@ -7,7 +7,12 @@
 // ?llm=0이면 LLM 없음, ?core=builtin이면 ①을 내장 분석(추정 칸)으로 보인다. DOM 없이 import된다.
 // 카드 Q: ①에만 소스 토막 둘(demo/matching_svc.c의 book_insert·match_order, 이 저장소의 실제 줄). code_mode는 기본 tools.
 // ?code=snippets|off|none(저장소 없음), ?codever=differ|unknown으로 다른 모양을 본다.
-import { SEC, MIN, HOUR, ulid } from './util.js';
+// 체험판(profile.js의 lite): 보고서 4건 = ① + 오늘의 ④ 3건(②③⑤와 지난 ④는 없다). ①은 시간표의 그 종료에 붙인다:
+// base − 150분 market-open › start-matching(w.crashRun)이 띄운 matching_svc가 base − 126분에 죽음. 시각은 세계의 프로세스 기록(w.procs)과 같고
+// 직전 프로파일 근거는 그 시각 타임머신이 보이는 모양(core.js shapeFor)에서 계산한다. 요일 · 여는 시각과 무관하게 24시간 목록에 보인다.
+import { SEC, MIN, HOUR, ulid, fmtN } from './util.js';
+import { LITE, DEMO } from './profile.js';
+import { shapeFor, profileSplit } from './core.js';
 
 // 화면 주소의 미리보기 값(?code= …). API 경로의 쿼리가 아니라 페이지 쿼리다.
 function pageParam(k) {
@@ -34,6 +39,11 @@ function stOf(w) {
     const xs = w.runs.filter((r) => r.flow_id === 'ext-send-margin' && r.step_id === 'send-margin' && r.status === 'FAILED' && r.started_at && r.ended_at)
       .sort((a, b) => a.started_at - b.started_at);
     s = { m1: m[0] || w.startRun, m2: m[1] || m[0] || w.startRun, q1: qr[0] || w.quoteRun, xs, llm: new Map() };
+    if (LITE) {
+      // 체험판: ①은 죽은 체결 서비스를 띄웠던 실행에(없으면 위의 지난 실행 → 지금 실행 순), ④는 오늘(24시간 안) 실패한 시도만
+      s.m1 = w.crashRun || s.m1;
+      s.xs = xs.filter((r) => r.ended_at >= w.base - 24 * HOUR);
+    }
     state.set(w, s);
   }
   return s;
@@ -129,6 +139,32 @@ function sourceEv(code, ver, ts, buildID) {
   };
 }
 
+// 걸린 시간 글(매니저 exits/pack.go fmtDur와 같은 꼴)
+function fmtDur(ms) {
+  const s = Math.max(0, Math.floor((ms + 500) / 1000));
+  if (s < 60) return `${s}초`;
+  if (s < 3600) return s % 60 ? `${Math.floor(s / 60)}분 ${s % 60}초` : `${s / 60}분`;
+  const m = Math.floor((s % 3600) / 60);
+  return m ? `${Math.floor(s / 3600)}시간 ${m}분` : `${Math.floor(s / 3600)}시간`;
+}
+
+// 체험판 ①의 직전 프로파일 근거: 그 실행의 그 구간 표본(/profile · 타임머신과 같은 계산)에서 매니저 근거 묶음(exits/pack.go evProfile)과
+// 같은 모양으로 만든다 — 직전 60초, 상위 스택 5줄(앞의 프로세스 이름은 뺌), 죽은 함수가 든 표본 비율. 표본이 없으면 null
+const PROF_MS = 60 * SEC;
+const numText = (v) => (Math.abs(v) < 10 && v !== Math.trunc(v) ? v.toFixed(1) : fmtN(v)); // 매니저 fmtNum: 10 미만의 소수만 한 자리
+function crashProfile(c, r, end, func) {
+  const got = shapeFor(c, r, end - PROF_MS, end);
+  if (!got) return null;
+  const { samples, stacks } = profileSplit(got[0], got[1], end - PROF_MS, end);
+  if (!samples) return null;
+  const hit = stacks.filter((x) => x.frames.split(';').includes(func)).reduce((n, x) => n + x.samples, 0);
+  const pct = Math.round((1000 * hit) / samples) / 10;
+  return {
+    id: 'profile', title: `직전 ${PROF_MS / SEC}초 표본 ${fmtN(samples)}개`, ts: end - PROF_MS, facts: { samples, window_s: PROF_MS / SEC, crash_func_pct: pct },
+    lines: [...stacks.slice(0, 5).map((x) => `${((100 * x.samples) / samples).toFixed(1)}% ${x.frames.replace(/^matching_svc;/, '')}`), `죽은 함수 ${func}가 든 표본 ${numText(pct)}%`],
+  };
+}
+
 function report(o) {
   return {
     id: '', ppid: 0, exe: '', build_id: '', cmdline: '', cwd: '/opt/eum/demo', leader: false, resident: true,
@@ -136,10 +172,14 @@ function report(o) {
   };
 }
 
-function crashRec(w, s, flags) {
+function crashRec(c, s) {
+  const { w, flags } = c;
   const r = s.m1;
-  const start = r.started_at + 1200;
-  const end = r.started_at + (2 * HOUR + 13 * MIN + 27 * SEC);
+  // 체험판: 시작 · 끝은 세계의 프로세스 기록(종료 ID가 이 보고서인 것)에서. 기록이 없으면(통합 전) base − 126분에 끝난 것으로
+  const dead = DEMO ? (w.procs || []).find((p) => p.exit_id === IDS.crash && p.ended_at) : null;
+  const start = dead ? dead.started_at : r.started_at + 1200;
+  const end = dead ? dead.ended_at : DEMO ? Math.max(w.base - 126 * MIN, start + MIN) : r.started_at + (2 * HOUR + 13 * MIN + 27 * SEC);
+  const prof = DEMO ? crashProfile(c, r, end, 'book_insert') : null;
   const builtin = flags.core === 'builtin';
   const frames = builtin ? builtinFrames() : GDB_FRAMES;
   const t = (d) => hhmmss(end + d * SEC);
@@ -151,7 +191,8 @@ function crashRec(w, s, flags) {
     max_rss_mb: 48.6, last_rss_mb: 47.9, last_cpu_pct: 99.2, threads: 4,
     stdout: '/opt/eum/demo/log/matching.out', stderr: '/opt/eum/demo/log/matching.out',
     output_tail: [
-      '(I) 체결 1,204,331건 누적 · 대기 큐 212',
+      // 체험판: 누적 건수를 산 시간(약 23분 × 평소 초당 1,480건)에 맞춘다
+      DEMO ? `(I) 체결 ${fmtN(((end - start) / SEC) * 1480)}건 누적 · 대기 큐 212` : '(I) 체결 1,204,331건 누적 · 대기 큐 212',
       '(W) 호가 단계 비어 있음: 005930 매도 10단계',
       '(I) 주문 접수 ORD-0081723 005930 매도 72,400 x 30',
       '(W) 호가 단계 비어 있음: 005930 매도 10단계',
@@ -168,10 +209,10 @@ function crashRec(w, s, flags) {
   const evidence = [
     // 제목·줄 모양은 매니저 근거 묶음(internal/manager/exits/pack.go)과 같다
     { id: 'exit', title: 'matching_svc(pid 48213) SIGSEGV · core 있음 · 상주 서비스', ts: end,
-      lines: ['끝난 방식: 신호 SIGSEGV(11), core 씀 · 출처 wait4(에이전트가 부모)', `시작 ${hhmmss(start)} · 끝 ${hhmmss(end)} (2시간 13분 동안)`] },
+      lines: ['끝난 방식: 신호 SIGSEGV(11), core 씀 · 출처 wait4(에이전트가 부모)', `시작 ${hhmmss(start)} · 끝 ${hhmmss(end)} (${DEMO ? fmtDur(end - start) : '2시간 13분'} 동안)`] },
     { id: 'core', title: `죽은 곳 book_insert+0x17 (matching_svc)`, ts: end, lines: frames.slice(0, 4).map((f, i) => `#${i} ${f.func}${f.offset || ''} (${f.module}) ${f.addr}`) },
-    { id: 'profile', title: '직전 10초 표본 988개', ts: end - 4 * SEC, facts: { samples: 988, window_s: 10, crash_func_pct: 74 },
-      lines: [`74.1% ${STACK};book_insert`, `11.3% ${STACK};level_find`, '6.2% main;read_orders;parse_order', '4.0% main;read_orders;__libc_recv', '죽은 함수 book_insert가 든 표본 74%'] },
+    ...(DEMO ? (prof ? [prof] : []) : [{ id: 'profile', title: '직전 10초 표본 988개', ts: end - 4 * SEC, facts: { samples: 988, window_s: 10, crash_func_pct: 74 },
+      lines: [`74.1% ${STACK};book_insert`, `11.3% ${STACK};level_find`, '6.2% main;read_orders;parse_order', '4.0% main;read_orders;__libc_recv', '죽은 함수 book_insert가 든 표본 74%'] }]),
     { id: 'logs', title: '오류 로그 1줄 · 경고 14줄', ts: end, facts: { errors: 1, warns: 14 },
       lines: [`${t(-41)} (W) matching: 호가 단계 비어 있음: 005930 매도 10단계`, `${t(-3)} (W) matching: 호가 단계 비어 있음: 005930 매도 10단계`, `${t(-1)} (W) matching: 호가 단계 비어 있음: 005930 매도 10단계`, `${t(1)} (E) gateway: 주문 게이트웨이: matching 연결 끊김`] },
     { id: 'output', title: '출력 끝 5줄', ts: end, lines: rep.output_tail },
@@ -186,8 +227,10 @@ function crashRec(w, s, flags) {
   if (withCode) evidence.push(sourceEv(CODE, ver, end, rep.build_id));
   const rule = {
     category: 'crash.null', title: 'book_insert에서 NULL 역참조(주소 0x8)', confidence: 'high', by: 'rule', at: end + 2 * SEC,
-    detail: 'matching_svc가 SIGSEGV(없는 주소)로 죽었습니다. 결함 주소 0x8은 NULL 포인터에서 8바이트 떨어진 필드를 읽은 모양입니다. 죽기 직전 10초 프로파일에서도 book_insert가 표본의 74%였습니다.',
-    evidence_ids: ['exit', 'core', 'kernel', 'profile', ...(withCode ? ['source'] : [])],
+    // 체험판: 프로파일 문장은 위에서 계산한 근거의 숫자로(매니저 exitdiag crashExtras와 같은 글). 근거가 없으면 문장도 근거 ID도 뺀다
+    detail: 'matching_svc가 SIGSEGV(없는 주소)로 죽었습니다. 결함 주소 0x8은 NULL 포인터에서 8바이트 떨어진 필드를 읽은 모양입니다.'
+      + (!DEMO ? ' 죽기 직전 10초 프로파일에서도 book_insert가 표본의 74%였습니다.' : prof ? ` ${prof.title}의 ${numText(prof.facts.crash_func_pct)}%가 book_insert에 있었습니다.` : ''),
+    evidence_ids: ['exit', 'core', 'kernel', ...(!DEMO || prof ? ['profile'] : []), ...(withCode ? ['source'] : [])],
     next_checks: ['matching_svc.c:119에서 NULL일 수 있는 포인터(호가 단계·주문 큐) 확인', '같은 build-id의 실행 파일로 core 열기: gdb matching_svc core.matching_svc.48213', '업무 로그의 "호가 단계 비어 있음" 경고와 죽은 시각 대조'],
   };
   const pack = { version: 1, report: rep, flow_id: r.flow_id, step_id: r.step_id, run_status: r.status, evidence };
@@ -463,7 +506,9 @@ function svrbRec(w) {
 
 function records(c) {
   const s = stOf(c.w);
-  return [crashRec(c.w, s, c.flags), oomRec(c.w, s), termRec(c.w, s), ...extRecs(c.w, s), ...svrbRec(c.w)].map((x) => ({ ...x, llm: s.llm.get(x.pack.report.id) || null }));
+  // 체험판: ① + 오늘의 ④(②③⑤는 없다)
+  const all = LITE ? [crashRec(c, s), ...extRecs(c.w, s)] : [crashRec(c, s), oomRec(c.w, s), termRec(c.w, s), ...extRecs(c.w, s), ...svrbRec(c.w)];
+  return all.map((x) => ({ ...x, llm: s.llm.get(x.pack.report.id) || null }));
 }
 const find = (c, id) => records(c).find((x) => x.pack.report.id === id);
 const llmOn = (c) => !c.flags.llmOff;

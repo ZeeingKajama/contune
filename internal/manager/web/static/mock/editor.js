@@ -1,6 +1,7 @@
 // 편집기: /editor /flows/{id}/def /flows/validate PUT·DELETE /flows/reload /assist
 import { cronNext, parseYaml, dumpFlow, sha } from './util.js';
 import { ALLOW, flowLevels, flowOf, flowLast } from './world.js';
+import { DEMO, SUMMIT } from './profile.js';
 
 const ok = (body, status = 200) => ({ status, body });
 const err = (status, msg, extra) => ({ status, body: { error: msg, ...extra } });
@@ -14,6 +15,10 @@ function cmdArr(v) {
   if (typeof v === 'string') return v.trim() ? v.trim().split(/\s+/) : [];
   return [];
 }
+
+const gateOf = (g) => ({ host: String(g.host ?? ''), metric: String(g.metric ?? ''),
+  ...(Number.isFinite(Number(g.max)) && g.max !== null && g.max !== '' ? { max: Number(g.max) } : {}),
+  ...(Number.isFinite(Number(g.min)) && g.min !== null && g.min !== '' ? { min: Number(g.min) } : {}) });
 
 // 입력을 정의 모양으로 정리한다(board는 파일 경로라 정의에 넣지 않음).
 function normalize(raw) {
@@ -29,6 +34,8 @@ function normalize(raw) {
       timeout: s.timeout ? String(s.timeout) : '1h',
       retry: { count: Number(s.retry?.count) || 0, interval: s.retry?.interval ? String(s.retry.interval) : '1m' },
       profile: !!s.profile,
+      // 시연판: 리소스 게이트가 있는 스텝은 정의에 그대로 둔다(매니저 editor/http.go의 gate 칸: host · metric · max|min)
+      ...(SUMMIT && Array.isArray(s.gate) && s.gate.length ? { gate: s.gate.map(gateOf) } : {}),
     })),
   };
   return f;
@@ -91,6 +98,11 @@ function defOf(f) {
   return { def, yaml, sha: sha(yaml) };
 }
 
+// 정의의 sha(체험판의 감사 기록 씨앗이 지금 정의에 이어지게 쓴다, audit.js)
+export const defSha = (f) => defOf(f).sha;
+// 체험판: 감사 기록의 내용 글을 매니저(editor/http.go)와 같게 — "파일 옛 sha → 새 sha"(앞 8자, 없으면 -)
+const sha8 = (v) => (v ? String(v).slice(0, 8) : '-');
+
 function getDef(c, m) {
   const f = flowOf(c.w, m[1]);
   if (!f) return err(404, '플로우를 찾을 수 없음');
@@ -147,7 +159,8 @@ function put(c, m) {
   if (prevFlow) Object.assign(prevFlow, def);
   else c.w.flows.push(def);
   const d = defOf(def);
-  c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor: 'user:web(127.0.0.1)', action: 'flow.save', target: m[1], detail: `${prev ? prev.sha : ''} → ${d.sha}` });
+  c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor: 'user:web(127.0.0.1)', action: 'flow.save', target: m[1],
+    detail: DEMO ? `${file} ${sha8(prev && prev.sha)} → ${sha8(d.sha)}` : `${prev ? prev.sha : ''} → ${d.sha}` });
   return ok({ file, sha: d.sha });
 }
 
@@ -156,8 +169,9 @@ function del(c, m) {
   const f = flowOf(c.w, m[1]);
   if (!f) return err(404, '플로우를 찾을 수 없음');
   if (isRunning(c, f)) return err(409, '실행 중인 플로우는 지울 수 없음');
+  const gone = DEMO ? `${f.file || `flows/${f.board}/${m[1]}.yaml`} ${sha8(defSha(f))} → -` : '';
   c.w.flows.splice(c.w.flows.indexOf(f), 1);
-  c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor: 'user:web(127.0.0.1)', action: 'flow.delete', target: m[1], detail: '' });
+  c.w.audit.push({ id: c.w.audit.length + 1, ts: c.now, actor: 'user:web(127.0.0.1)', action: 'flow.delete', target: m[1], detail: gone });
   return ok({ ok: true });
 }
 

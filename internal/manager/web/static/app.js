@@ -1,5 +1,5 @@
 // 라우터 · 위 막대 · 시계 · 알림 종 · 테마.
-import { api, poll, stopScope, onHealth, isHealthy, onAuthRequired, onForbidden } from './api.js';
+import { api, poll, stopScope, onHealth, isHealthy, onAuthRequired, onForbidden, isDemo, isSummit } from './api.js';
 import { createTree, parseRoute } from './tree.js';
 import { fmtClock, toast } from './ui.js';
 import { loadMe, logout, showLogin, drawUser, roleName } from './auth.js';
@@ -68,7 +68,26 @@ function initTheme() {
     const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
     root.dataset.theme = dark ? 'light' : 'dark';
     try { localStorage.setItem('eum.theme', root.dataset.theme); } catch (e) { /* 무시 */ }
+    recolor();
   });
+}
+
+// 테마를 바꾼 뒤 차트 색을 맞춘다. 차트는 만들 때 색을 읽어서(chart.js) 그대로 두면 옛 테마 색으로 남는다.
+// 화면의 retheme()이 true를 주면 그 화면이 차트만 새로 만든 것이다(타임머신: 고른 A·B 구간이 남는다). 그 밖에는 지금 화면을 다시 그린다.
+// 다시 그리면 하던 일이 사라지는 때는 그대로 둔다(그 화면을 다시 열면 새 색이다): 편집기, 열린 서랍·창, 글을 넣은 입력 칸.
+const KEEP_ON_THEME = new Set(['edit', 'dashedit']);
+function recolor() {
+  const page = document.getElementById('page');
+  if (!current || relogin || !page.querySelector('.uplot')) return;
+  try { if (current.retheme && current.retheme()) return; } catch (e) { console.error(e); }
+  if (KEEP_ON_THEME.has(document.body.dataset.page) || document.querySelector('#drawer, .modal-bg')) return;
+  const typed = (x) => /^(text|search|textarea)$/.test(x.type) && x.value !== x.defaultValue;
+  if ([...page.querySelectorAll('input, textarea')].some(typed)) return;
+  const at = location.hash, top = page.scrollTop;
+  if (current.dispose) { try { current.dispose(); } catch (e) { console.error(e); } }
+  current = null; // 같은 화면 안 이동(reroute)으로 넘기지 않고 처음부터 그린다
+  currentPath = '';
+  route().then(() => { if (location.hash === at) page.scrollTop = top; });
 }
 
 function initTop() {
@@ -118,6 +137,10 @@ function start() {
   onForbidden((need) => toast(`권한이 없습니다(${roleName(need)} 이상)`));
   window.addEventListener('hashchange', route);
   tree.ready.finally(route);
+  // 체험판(mock + lite)에서만 화면 위 가이드를 불러온다. 그 밖에는 파일도 받지 않는다.
+  if (isDemo()) import('./guide/guide.js').then((m) => m.startGuide()).catch((e) => console.error(e));
+  // 써밋 시연판(mock + summit)에서만 발표자용 순서 가이드를 불러온다.
+  if (isSummit()) import('./guide/stage.js').then((m) => m.startStage()).catch((e) => console.error(e));
 }
 
 async function boot() {
