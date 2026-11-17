@@ -119,6 +119,21 @@ export function createTree(host, { onBoards } = {}) {
   let hosts = [], flows = [];
   let collapsed = store.get('eum.tree.collapsed', {});
   const sig = { s: '' };
+  let q = '', onlyBad = false; // 찾기: 이름 부분 일치 · 이상만
+  const filtering = () => q !== '' || onlyBad;
+
+  // 맨 위 찾기 칸은 한 번만 만든다(5초 갱신에도 입력 값·포커스가 남게). 아래 list만 다시 그린다.
+  const input = el('input', { type: 'search', 'aria-label': '서버·플로우 찾기', placeholder: '서버·플로우 찾기', autocomplete: 'off' });
+  const badBtn = el('button', { type: 'button', text: '이상만', 'aria-pressed': 'false', title: '정상·성공이 아닌 것만' });
+  const find = el('div', { class: 'tree-find' }, input, badBtn);
+  const list = el('div', { role: 'tree', 'aria-label': '서버·배치판' });
+  host.replaceChildren(find, list);
+  input.addEventListener('input', () => { q = input.value.trim().toLowerCase(); render(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { const f = list.querySelector('[role=treeitem]'); if (f) { e.preventDefault(); f.focus(); } }
+    else if (e.key === 'Escape' && input.value) { e.stopPropagation(); input.value = ''; q = ''; render(); }
+  });
+  badBtn.addEventListener('click', () => { onlyBad = !onlyBad; badBtn.setAttribute('aria-pressed', String(onlyBad)); render(); });
 
   function curQuery() {
     const [, qs = ''] = location.hash.split('?');
@@ -144,16 +159,17 @@ export function createTree(host, { onBoards } = {}) {
     const isLeaf = node.kind !== 'group';
     const hasKids = !isLeaf && node.children.size > 0;
     const ck = rootKey + ':' + node.key;
-    const open = depth === 0 ? !collapsed[ck] : !collapsed[ck];
+    const open = filtering() ? true : !collapsed[ck];
     const cur = curQuery().g;
     const [hp] = location.hash.slice(1).split('?');
     const selected = (kind === 'host' && !isLeaf && cur === node.path) ||
       (kind === 'host' && isLeaf && hp.startsWith('host/' + node.item.id)) ||
       (kind === 'flow' && ('board/' + node.path === hp || (isLeaf && hp === 'board/' + node.path + '/' + node.item.id)));
-    const r = el('div', { class: 'tnode' + (selected ? ' sel' : ''), style: `padding-left:${4 + depth * 14}px` },
-      el('span', { class: 'tw', text: hasKids ? (open ? '▾' : '▸') : '', onclick: (e) => {
-        e.stopPropagation(); collapsed[ck] = open; store.set('eum.tree.collapsed', collapsed); render();
-      } }),
+    const toggle = () => { collapsed[ck] = open; store.set('eum.tree.collapsed', collapsed); render(); };
+    const r = el('div', { class: 'tnode' + (selected ? ' sel' : ''), style: `padding-left:${4 + depth * 14}px`,
+      role: 'treeitem', tabindex: '-1', 'aria-level': String(depth + 1), 'data-fk': ck,
+      'aria-expanded': hasKids ? String(open) : false, 'aria-current': selected ? 'page' : false },
+      el('span', { class: 'tw', 'aria-hidden': 'true', text: hasKids ? (open ? '▾' : '▸') : '', onclick: (e) => { e.stopPropagation(); toggle(); } }),
       el('span', { class: 'tl', text: node.label, title: node.label }));
     if (sm.parts.length) {
       const b = el('span', { class: 'tb' });
@@ -163,6 +179,7 @@ export function createTree(host, { onBoards } = {}) {
       });
       r.append(b);
     }
+    r._toggle = hasKids ? toggle : null;
     r.addEventListener('click', () => {
       if (kind === 'host') {
         if (isLeaf) go(`#host/${encodeURIComponent(node.item.id)}/overview`);
@@ -188,29 +205,76 @@ export function createTree(host, { onBoards } = {}) {
 
   function render() {
     const out = [];
-    const q = curQuery();
+    const cq = curQuery();
     const [hp] = location.hash.slice(1).split('?');
     let chip = null;
-    if (q.g) chip = q.g.split('/').pop();
+    if (cq.g) chip = cq.g.split('/').pop();
     else if (hp.startsWith('board/') && hp.length > 6) chip = null;
     if (chip) out.push(el('div', { class: 'tree-chip' }, chip, el('button', { type: 'button', text: '✕', title: '범위 해제', onclick: clearScope })));
     // 배치 쪽 화면이면 배치판을 위에 둔다(서버 46대 아래에 묻히지 않게).
-    const roots = [['host', '서버', buildHostTree(hosts)], ['flow', '배치판', buildFlowTree(flows)]];
+    const bad = (st, ok) => st !== ok;
+    const keep = (id) => !q || String(id).toLowerCase().includes(q);
+    const fh = filtering() ? hosts.filter((h) => keep(h.id) && (!onlyBad || bad(h.state, 'ok'))) : hosts;
+    const ff = filtering() ? flows.filter((f) => keep(f.id) && (!onlyBad || bad(flowState(f), 'SUCCEEDED'))) : flows;
+    const roots = [['host', '서버', buildHostTree(fh)], ['flow', '배치판', buildFlowTree(ff)]];
     if (/^(board|edit|runs|run)(\/|$)/.test(hp)) roots.reverse();
     for (const [kind, label, root] of roots) {
       const sm = summarize(root.counts, kind);
       const ck = 'root:' + kind;
-      const open = !collapsed[ck];
-      const head = el('div', { class: 'tnode troot' },
-        el('span', { class: 'tw', text: open ? '▾' : '▸', onclick: () => { collapsed[ck] = open; store.set('eum.tree.collapsed', collapsed); render(); } }),
+      const open = filtering() ? true : !collapsed[ck];
+      const toggle = () => { collapsed[ck] = open; store.set('eum.tree.collapsed', collapsed); render(); };
+      const head = el('div', { class: 'tnode troot', role: 'treeitem', tabindex: '-1', 'aria-level': '1', 'aria-expanded': String(open), 'data-fk': ck },
+        el('span', { class: 'tw', 'aria-hidden': 'true', text: open ? '▾' : '▸' }),
         el('span', { class: 'tl', text: label }),
         el('span', { class: 'num unit', text: String(root.total) }));
       void sm;
+      head._toggle = toggle;
+      head.addEventListener('click', toggle);
       out.push(head);
       if (open) walk(root, 1, kind, kind, out);
     }
-    host.replaceChildren(...out);
+    if (filtering() && !out.some((n) => n.getAttribute && n.getAttribute('aria-level') > 1)) out.push(el('div', { class: 'tree-none', text: '맞는 항목 없음' }));
+    // 다시 그려도 포커스는 같은 노드에(roving tabindex: 포커스 노드, 없으면 지금 화면, 없으면 첫 노드)
+    const fk = list.contains(document.activeElement) ? document.activeElement.dataset.fk : null;
+    const sc = host.scrollTop;
+    list.replaceChildren(...out);
+    const items = [...list.querySelectorAll('[role=treeitem]')];
+    const tab = (fk && items.find((n) => n.dataset.fk === fk)) || list.querySelector('[aria-current]') || items[0];
+    if (tab) tab.tabIndex = 0;
+    if (fk && tab && tab.dataset.fk === fk) tab.focus({ preventScroll: true });
+    host.scrollTop = sc;
   }
+
+  // 키보드: ↑↓ 이동, → 펼침(펼친 묶음이면 첫 자식), ← 접힘(아니면 부모), Enter·Space 이동
+  list.addEventListener('keydown', (e) => {
+    const cur = e.target.closest && e.target.closest('[role=treeitem]');
+    if (!cur) return;
+    const items = [...list.querySelectorAll('[role=treeitem]')];
+    const i = items.indexOf(cur), lvl = Number(cur.getAttribute('aria-level'));
+    const go2 = (n) => { if (n) { e.preventDefault(); n.focus(); } };
+    const exp = cur.getAttribute('aria-expanded');
+    switch (e.key) {
+      case 'ArrowDown': go2(items[i + 1]); break;
+      case 'ArrowUp': if (i === 0) { e.preventDefault(); input.focus(); } else go2(items[i - 1]); break;
+      case 'Home': go2(items[0]); break;
+      case 'End': go2(items[items.length - 1]); break;
+      case 'ArrowRight':
+        if (exp === 'false') { e.preventDefault(); cur._toggle && cur._toggle(); } else if (exp === 'true') go2(items[i + 1]);
+        break;
+      case 'ArrowLeft':
+        if (exp === 'true' && !filtering()) { e.preventDefault(); cur._toggle && cur._toggle(); }
+        else { for (let k = i - 1; k >= 0; k--) if (Number(items[k].getAttribute('aria-level')) < lvl) { go2(items[k]); break; } }
+        break;
+      case 'Enter': case ' ': e.preventDefault(); cur.click(); break;
+      default: break;
+    }
+  });
+  list.addEventListener('focusin', (e) => {
+    const n = e.target.closest && e.target.closest('[role=treeitem]');
+    if (!n) return;
+    list.querySelectorAll('[role=treeitem][tabindex="0"]').forEach((x) => { if (x !== n) x.tabIndex = -1; });
+    n.tabIndex = 0;
+  });
 
   async function load() {
     const [h, f] = await Promise.all([api('/hosts'), api('/flows'), loadGroupOrder()]);
