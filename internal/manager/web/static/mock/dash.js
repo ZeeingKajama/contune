@@ -240,7 +240,7 @@ function examples(now) {
       { id: 'cpu', type: 'bar', title: '서버별 CPU', w: 4, h: 2, unit: '%', scope: { group: '매매체결' }, warn: 70, crit: 90, top: 10,
         queries: [{ metric: 'host.cpu.pct', label: 'CPU', by: 'host' }] },
       { id: 'svc-res', type: 'table', title: '서비스 자원', w: 8, h: 2,
-        queries: [{ metric: 'svc.cpu.pct', label: 'CPU %', by: 'owner' }, { metric: 'svc.rss.mb', label: 'RSS MB', by: 'owner' }] },
+        queries: [{ metric: 'svc.cpu.pct', label: 'CPU', by: 'owner' }, { metric: 'svc.rss.mb', label: '메모리', by: 'owner' }] },
       { id: 'log', type: 'logs', title: '체결 로그', w: 6, h: 2, scope: { service: 'matching' }, levels: ['error', 'warn'] },
       { id: 'svcs', type: 'services', title: '매매 서비스', w: 6, h: 2, scope: { group: '매매체결' } },
     ],
