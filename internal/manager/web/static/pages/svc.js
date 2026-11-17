@@ -8,7 +8,7 @@ import { api, poll } from '../api.js';
 import { lineChart, fmtTime } from '../chart.js';
 import { renderFlame, compareLeaf, verdict } from '../flame.js';
 import { parseSpan } from '../ai.js';
-import { el, esc, fmtNum, fmtClock, fmtDuration, numUnit, info, shortExec, svcOwner, toast, DASH, LEVEL_TEXT } from '../ui.js';
+import { el, esc, fmtNum, fmtClock, fmtDuration, numUnit, info, shortExec, svcOwner, toast, act, stateBox, changed, keepFocus, setTitle, DASH, LEVEL_TEXT } from '../ui.js';
 import { createTimeRange } from '../timerange.js';
 import { gate, can } from '../auth.js';
 import { bandsFromPanel, pickPanel } from './panelbands.js';
@@ -128,6 +128,7 @@ export async function render(root, params, query = {}) {
 
 // #svcs: 서비스 목록
 async function renderList(root, query) {
+  setTitle('서비스');
   root.append(bizTabs('svcs', query));
   const errBox = el('div');
   const head = el('div', { class: 'rn-ch' });
@@ -135,9 +136,9 @@ async function renderList(root, query) {
   root.append(errBox, el('section', { class: 'rn-card sv-card' }, head, scroll));
   let panelTitle = {};
   try { panelTitle = Object.fromEntries(((await api('/panels')).panels || []).map((p) => [p.id, p.title])); } catch (e) { /* 패널 ID로 */ }
-  const reload = gate(el('button', { type: 'button', class: 'ghost', text: '다시 읽기', title: '손으로 고친 서비스 정의 파일을 반영합니다', onclick: async () => {
-    try { const r = await api('/services/reload', { method: 'POST' }); toast(`서비스 정의 ${fmtNum(r.services ?? 0)}개`); await load(); } catch (e) { /* 알림은 api가 한다 */ }
-  } }), 'admin');
+  const reload = gate(el('button', { type: 'button', class: 'ghost', text: '다시 읽기', title: '손으로 고친 서비스 정의 파일을 반영합니다', onclick: (ev) => act(ev.currentTarget, async () => {
+    const r = await api('/services/reload', { method: 'POST' }); toast(`서비스 정의 ${fmtNum(r.services ?? 0)}개`); await load();
+  }, { fail: '서비스 정의 다시 읽기' }) }), 'admin');
 
   function row(it) {
     const d = it.def || {};
@@ -152,7 +153,7 @@ async function renderList(root, query) {
     const exitCell = el('td', { class: 'num' + (exits ? ' bad' : '') });
     if (exits) exitCell.append(el('a', { href: exits === 1 && lastExit ? '#exit/' + q(lastExit) : '#exits?q=' + q(d.id), text: fmtNum(exits), title: '종료 보고서', onclick: (ev) => ev.stopPropagation() }));
     else exitCell.textContent = '0';
-    const line = el('tr', { class: 'click' + (down ? ' g-failed' : ''), tabindex: '0' },
+    const line = el('tr', { class: 'click' + (down ? ' g-failed' : ''), tabindex: '0', 'data-fk': d.id },
       name,
       el('td', {}, it.panel ? el('a', { href: '#biz/' + q(it.panel), text: panelTitle[it.panel] || it.panel, onclick: (ev) => ev.stopPropagation() }) : DASH),
       el('td', { class: 'sv-insts' }, ins.length ? ins.map((i) => stateEl(i, d, 'a', { href: svcHash(d.id, i.host), onclick: (ev) => ev.stopPropagation() })) : DASH),
@@ -164,12 +165,14 @@ async function renderList(root, query) {
       el('td', { class: 'cut' }, launches.length ? launches.flatMap((i, k) => [k ? ', ' : null, launchLink(i)]) : procs ? launchLink({}) : DASH));
     const go = () => { location.hash = svcHash(d.id, (pickInstance(ins) || {}).host); };
     line.addEventListener('click', go);
-    line.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') go(); });
+    line.addEventListener('keydown', (ev) => { if (ev.target === line && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); go(); } });
     return line;
   }
 
+  const seen = {};
   async function load() {
     const r = await api('/services');
+    if (!changed(seen, 'list', r)) return;
     const list = servicesOf(r);
     const errs = errorsEl((r && r.errors) || [], can('admin'));
     errBox.replaceChildren(...(errs ? [errs] : []));
@@ -187,9 +190,16 @@ async function renderList(root, query) {
     if (!list.length) tb.append(el('tr', {}, el('td', { colspan: 9, class: 'empty', text: '보이는 서비스 없음' })));
     for (const it of list) tb.append(row(it));
     t.append(tb);
-    scroll.replaceChildren(t);
+    keepFocus(scroll, () => scroll.replaceChildren(t));
   }
-  await load().catch(() => { scroll.replaceChildren(el('p', { class: 'empty', text: '서비스 목록을 불러오지 못함' })); });
+  const first = async () => {
+    try { await load(); } catch (e) {
+      delete seen.list;
+      scroll.replaceChildren(stateBox('error', { text: '서비스 목록을 불러오지 못함', e, retry: first }));
+    }
+  };
+  scroll.replaceChildren(stateBox('loading'));
+  await first();
   timers.push(poll(load, 5000));
 }
 function numSpan(v, unit) {
@@ -211,14 +221,17 @@ async function renderTM(root, id, query) {
 
   let detail;
   try { detail = await api(detailPath(view())); } catch (e) {
+    setTitle('서비스');
     page.append(el('div', { class: 'tm-crumb' }, el('a', { href: '#svcs', text: '서비스' })),
-      el('p', { class: 'empty', text: e.status === 404 ? '서비스를 찾을 수 없음' : '서비스를 불러오지 못함' }));
+      stateBox('error', e.status === 404 ? { text: '서비스를 찾을 수 없음', e, detail: '서비스 정의(services 폴더)에 없는 이름입니다. 목록에서 다시 고르세요', action: { text: '서비스 목록', href: '#svcs' } }
+        : { text: '서비스를 불러오지 못함', e, retry: () => { root.replaceChildren(); return renderTM(root, id, query); } }));
     return;
   }
   let panels = [];
   try { panels = (await api('/panels')).panels || []; } catch (e) { /* 업무 트랙 없이 */ }
 
   const def = detail.def || { id };
+  setTitle(`${def.title || def.id || id} · 서비스`);
   const st = {
     // 주소의 a·b(“from-to”)·hl은 원인 추적(관제 AI)이 고른 구간과 함수다: 그대로 골라 둔 채로 연다.
     detail, inst: pickInstance(detail.instances, query.host || ''), view: view(), sel: { a: parseSpan(query.a), b: parseSpan(query.b) }, pending: null, hl: query.hl || null, tab: 'procs',
@@ -410,7 +423,7 @@ async function renderTM(root, id, query) {
     const rows = topChanges(cmp, 5);
     if (!rows.length) return;
     const f = (v) => v.toFixed(1);
-    const trs = rows.map((r) => `<tr class="${st.hl === r.leaf ? 'on' : ''}" data-leaf="${esc(r.leaf)}"><td class="fn">${esc(r.leaf)}</td><td>${f(r.pctA)}%</td><td>${f(r.pctB)}%</td><td class="${r.up ? 'up' : 'down'}">${r.up ? '+' : ''}${f(r.diff)}%p</td><td><span class="tm-cbar ${r.up ? 'up' : 'down'}" style="width:${r.bar}%"></span></td></tr>`).join('');
+    const trs = rows.map((r) => `<tr class="${st.hl === r.leaf ? 'on' : ''}" data-leaf="${esc(r.leaf)}"><td class="fn"><button type="button" class="sv-fn" aria-pressed="${st.hl === r.leaf ? 'true' : 'false'}">${esc(r.leaf)}</button></td><td>${f(r.pctA)}%</td><td>${f(r.pctB)}%</td><td class="${r.up ? 'up' : 'down'}">${r.up ? '+' : ''}${f(r.diff)}%p</td><td><span class="tm-cbar ${r.up ? 'up' : 'down'}" style="width:${r.bar}%"></span></td></tr>`).join('');
     cmpEl.innerHTML = `<table class="tm-cmp-t"><thead><tr><th>함수</th><th>기준(A) Self CPU 점유율</th><th>비교(B) Self CPU 점유율</th><th>변화</th><th></th></tr></thead><tbody>${trs}</tbody></table>`;
     for (const row of cmpEl.querySelectorAll('tbody tr')) {
       row.addEventListener('click', () => { st.hl = st.hl === row.dataset.leaf ? null : row.dataset.leaf; drawFlames(); });

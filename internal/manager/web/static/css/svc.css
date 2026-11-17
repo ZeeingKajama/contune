@@ -47,3 +47,6 @@ a.sv-inst:hover { border-color:var(--accent); }
 .sv-ek { flex:none; min-width:72px; font-size:12px; font-weight:600; color:var(--c); display:inline-flex; align-items:center; gap:6px; }
 .sv-ek::before { content:''; width:0; height:12px; border-left:2px dashed var(--c); }
 .sv-etx { color:var(--t1); }
+
+/* UI 고도화 P5 */
+.tm-cmp-t button.sv-fn { border:0; background:none; padding:0; margin:0; font:inherit; color:inherit; text-align:left; cursor:pointer; }
