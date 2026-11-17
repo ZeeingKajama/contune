@@ -184,3 +184,5 @@
 .ed-modal { width:520px; display:flex; flex-direction:column; gap:8px; }
 .ed-nl { width:100%; resize:vertical; font:inherit; }
 .ed-nlmsg { color:var(--t2); font-size:13px; min-height:1em; }
+/* 문제 목록 줄의 누를 수 있는 칸(button) */
+.ed-probs li .ed-plink { display:flex; gap:8px; align-items:baseline; width:100%; border:0; background:none; padding:0; margin:0; font:inherit; color:inherit; text-align:left; cursor:pointer; }
