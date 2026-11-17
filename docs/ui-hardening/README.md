@@ -94,3 +94,10 @@ go build ./... && go vet ./internal/manager/...                 # 정적 파일�
 공통 요청: 파일·함수·바라는 동작 한 줄씩 (없으면 없음)
 알아 둘 것: 다음 사람이 모르면 사고 날 것만 (없으면 없음)
 ```
+
+## A가 끝난 뒤 알아 둘 것 (B 묶음 공통)
+
+- `route()`가 화면을 옮길 때마다 제목을 기본값으로 되돌린다. 자세한 제목(`setTitle`)은 `render`뿐 아니라 `reroute`에서도 다시 넣는다.
+- 화면을 그리다 난 `ApiError`는 콘솔에 안 찍히고 실패 칸으로만 보인다. `check.sh`가 `OK`여도 자기 화면 스크린샷은 꼭 본다.
+- 포커스 확인(`eval`의 `document.activeElement`)은 `tools/cdp.mjs`가 포커스 에뮬레이션을 켜 두어 headless에서도 맞게 나온다.
+- 계약의 덧붙임 세 가지(`pollState`의 `fails`·`lastOk`, `toast`의 반환값, `stateBox`의 `detail`)는 `A-foundation.md` 표에 있다.

@@ -26,6 +26,8 @@ const send = (method, params = {}) => new Promise((r) => { const i = ++id; wait.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ev = async (expression) => { const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); return r.result?.result?.value ?? r.result?.exceptionDetails?.exception?.description ?? null; };
 await send('Page.enable'); await send('Runtime.enable');
+// headless에서는 이것이 없으면 :focus·focus 이벤트가 맞지 않는다
+await send('Emulation.setFocusEmulationEnabled', { enabled: true });
 let bad = 0;
 for (const j of jobs) {
   const w = j.w || W, h = j.h || H, theme = j.theme || THEME;
