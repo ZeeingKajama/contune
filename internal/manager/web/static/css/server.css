@@ -1,4 +1,3 @@
-.srv .sortable { cursor:pointer; user-select:none; }
 .srv-head { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
 .srv-head .sec { margin:0; }
 .srv-head .meta { color:var(--t2); font-size:var(--fs-sm); }

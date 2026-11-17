@@ -212,7 +212,6 @@ a.fg-svc:hover { border-color:var(--accent); text-decoration:underline; }
 .bt-log { background:var(--bg); border:1px solid var(--line); border-radius:var(--r-md); padding:8px 10px; font:var(--fs-sm)/1.45 ui-monospace,Consolas,monospace; white-space:pre-wrap; word-break:break-all; max-height:360px; overflow:auto; margin:0; }
 
 /* 실행 이력(#runs) 거르기 */
-.bt-filters { display:flex; gap:12px; margin-bottom:8px; flex-wrap:wrap; }
 .bt-filter { display:flex; gap:6px; align-items:center; color:var(--t3); font-size:var(--fs-sm); }
 .bt-filter select { font:inherit; color:var(--t1); background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); padding:3px 8px; }
 .fg-svc.more { color:var(--t3); font-family:system-ui,sans-serif; }

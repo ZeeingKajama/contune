@@ -35,7 +35,6 @@
 .gauge .gnum { font-size:26px; font-weight:700; fill:var(--t1); font-variant-numeric:tabular-nums; }
 .gauge .gnum.warn { fill:var(--warn); } .gauge .gnum.crit { fill:var(--crit); }
 .facs { display:flex; flex-direction:column; gap:1px; min-width:0; }
-.fac { display:block; font-size:var(--fs-sm); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; color:var(--t2); }
 .gauge .gh { stroke:var(--t3); stroke-width:10; stroke-dasharray:2 2.5; opacity:.6; }
 /* 장애 위험도 카드: 미확인 수준 배지 + 전체·용인, 확인할 것 2줄(넓으면 3줄), 진행 중 장애 */
 .rk-head { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }

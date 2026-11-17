@@ -87,7 +87,7 @@ body[data-tv] .dw-lv, body[data-tv] .dw-stl { font-size:var(--tv-b); }
 body[data-tv] .dw-b, body[data-tv] .dw-b .mw, body[data-tv] .dw-b .mw-bars, body[data-tv] .dw-b .mw-tb, body[data-tv] .dw-b .mw-th, body[data-tv] .dw-b .mw-sub,
 body[data-tv] .dw-b .mw-sv .unit, body[data-tv] .dw-b .dwg-lr, body[data-tv] .dw-b .dwg-sr, body[data-tv] .dw-b .dwg-foot, body[data-tv] .dw-b .dwg-more,
 body[data-tv] .dw-b .wrow, body[data-tv] .dw-b .kpi, body[data-tv] .dw-b .dc-side, body[data-tv] .dw-b .fit-more,
-body[data-tv] .dw-b .we, body[data-tv] .dw-b .wa, body[data-tv] .dw-b .dc-list, body[data-tv] .dw-b .fac, body[data-tv] .dw-b .facs .rk-item,
+body[data-tv] .dw-b .we, body[data-tv] .dw-b .wa, body[data-tv] .dw-b .dc-list, body[data-tv] .dw-b .facs .rk-item,
 body[data-tv] .dw-b .gl, body[data-tv] .dw-b .gn, body[data-tv] .dw-b .tl-sum, body[data-tv] .dw-b .wok { font-size:var(--tv-b); }
 body[data-tv] .dw-b .mw-bars { line-height:1.4; grid-auto-rows:minmax(calc(var(--tv-b) * 1.5), auto); }
 body[data-tv] .dw-b .mw-big { font-size:clamp(var(--tv-big), 15cqw, calc(var(--tv-big) * 1.6)); }

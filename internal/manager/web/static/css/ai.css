@@ -62,8 +62,6 @@ a.ai-ref:hover { border-color:var(--ai); }
 .at-path b { color:var(--ai-ink); }
 .at-path.big { font-size:var(--fs-md); color:var(--t2); }
 .at-metric, .at-wait { font-size:var(--fs-sm); color:var(--t2); margin:0; }
-.at-diag { display:flex; align-items:baseline; gap:6px; font-size:var(--fs-sm); min-width:0; }
-.at-dt { color:var(--t1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .at-act { display:flex; gap:6px; flex-wrap:wrap; margin-top:2px; }
 .ai-btn { display:inline-flex; align-items:center; font-size:var(--fs-sm); padding:3px 10px; border-radius:var(--r-sm); border:1px solid var(--line); background:var(--surface); color:var(--t1); text-decoration:none; cursor:pointer; }
 .ai-btn:hover { border-color:var(--ai); }
