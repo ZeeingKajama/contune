@@ -234,7 +234,7 @@ async function renderBoard(host, params, query) {
     const rows = found.filter((f) => !ui.st || flowState(f) === ui.st);
     body.replaceChildren(table({
       columns: [
-        { key: 'state', label: '상태', html: true, render: (f) => { const s = flowState(f); return s === 'SCHEDULED' && !f.last ? `<span class="bt-dim">${DASH}</span>` : (f.last && f.last.status !== 'RUNNING' && f.last.status !== 'SUCCEEDED' && f.last.status !== 'FAILED' ? badgeHTML(f.last.status) : badgeHTML(s)); } },
+        { key: 'state', label: '상태', html: true, render: (f) => { const s = flowState(f); return s === 'SCHEDULED' && !f.last ? `<span class="dim">${DASH}</span>` : (f.last && f.last.status !== 'RUNNING' && f.last.status !== 'SUCCEEDED' && f.last.status !== 'FAILED' ? badgeHTML(f.last.status) : badgeHTML(s)); } },
         { key: 'id', label: '플로우', render: (f) => el('span', { class: 'bt-name' }, el('b', { text: f.id }), f.board === board ? null : el('span', { class: 'bt-sub', text: f.board })) },
         { key: 'sched', label: '스케줄', render: (f) => el('span', { title: f.schedule ? `cron ${f.schedule}` : '수동 실행만' }, cronText(f.schedule)) },
         { key: 'at', label: '최근 실행', render: (f) => el('span', { class: 'num' }, fmtMD(f.last && f.last.started_at)) },
@@ -245,7 +245,7 @@ async function renderBoard(host, params, query) {
           return fmtDuration(l.ended_at - l.started_at);
         } },
         { key: 'hist', label: '최근 10회', render: (f) => historyStrip(hist.get(f.id)) },
-        { key: 'next', label: '다음 실행', render: (f) => (f.next_run ? el('span', { class: 'num' }, fmtMD(f.next_run), el('span', { class: 'bt-sub', text: relFuture(f.next_run, now) })) : el('span', { class: 'bt-dim', text: '수동' })) },
+        { key: 'next', label: '다음 실행', render: (f) => (f.next_run ? el('span', { class: 'num' }, fmtMD(f.next_run), el('span', { class: 'bt-sub', text: relFuture(f.next_run, now) })) : el('span', { class: 'dim', text: '수동' })) },
       ],
       rows,
       rowKey: (f) => f.id,
@@ -290,7 +290,7 @@ async function renderFlow(host, params, query) {
   const edit = await editorEnabled();
   setTitle(`${id} · 배치`);
 
-  const crumb = el('div', { class: 'bt-crumb' });
+  const crumb = el('div', { class: 'crumb bt-crumb' });
   const titleRow = el('div', { class: 'bt-titlerow' });
   const kpis = el('div', { class: 'bt-kpis' });
   const tabs = el('div', { class: 'bt-tabs', role: 'tablist' });
@@ -326,7 +326,7 @@ async function renderFlow(host, params, query) {
   }
   function drawState(f) {
     const l = f.last;
-    titleState.innerHTML = l ? runStatusHTML(l) : '<span class="bt-dim">실행 기록 없음</span>';
+    titleState.innerHTML = l ? runStatusHTML(l) : '<span class="dim">실행 기록 없음</span>';
   }
 
   function kpi(label, value, sub, cls = '') {
@@ -375,7 +375,7 @@ async function renderFlow(host, params, query) {
     picker.value = !cur || cur === S.frs[S.frs.length - 1] ? '' : cur.id;
     const fr = selRun();
     return el('div', { class: 'bt-runbar' },
-      el('span', { class: 'bt-dim', text: '플로우 실행' }), picker,
+      el('span', { class: 'dim', text: '플로우 실행' }), picker,
       fr ? el('span', { class: 'bt-runinfo' },
         `${TRIGGER_TEXT[fr.trigger] || fr.trigger || ''} · ${fr.ended_at ? '소요 시간 ' + fmtDuration(fr.ended_at - fr.started_at) : fmtDuration(S.now - fr.started_at) + ' 경과'}`) : null);
   }
@@ -421,7 +421,7 @@ async function renderFlow(host, params, query) {
     const cur = selRun();
     const grid = el('div', { class: 'bt-grid', style: `--n:${cols.length}` });
     // 머리: 플로우 실행 소요 시간 막대(높이 = 소요 시간, 색 = 결과). 누르면 그 실행을 고름
-    grid.append(el('div', { class: 'gh-label' }, el('span', { class: 'bt-dim', text: '플로우 실행' }), el('span', { class: 'bt-dim small', text: `최대 ${fmtDuration(maxDur)}` })));
+    grid.append(el('div', { class: 'gh-label' }, el('span', { class: 'dim', text: '플로우 실행' }), el('span', { class: 'dim small', text: `최대 ${fmtDuration(maxDur)}` })));
     cols.forEach((c) => {
       const d = (c.ended_at || S.now) - c.started_at;
       const h = Math.max(4, Math.round((d / maxDur) * 52));
@@ -443,7 +443,7 @@ async function renderFlow(host, params, query) {
       prevDay = day;
     });
     for (const s of steps) {
-      grid.append(el('div', { class: 'gr-label' }, el('code', { text: s.id, title: s.id }), el('span', { class: 'bt-dim', text: s.host })));
+      grid.append(el('div', { class: 'gr-label' }, el('code', { text: s.id, title: s.id }), el('span', { class: 'dim', text: s.host })));
       cols.forEach((c) => {
         const arr = c.steps[s.id];
         if (!arr) { grid.append(el('span', { class: 'gc none' + (c === cur ? ' sel' : ''), title: '실행 안 됨' })); return; }
@@ -480,7 +480,7 @@ async function renderFlow(host, params, query) {
     });
     return [
       el('div', { class: 'card bt-card bt-gridbox' }, el('div', { class: 'bt-gridscroll' }, grid), legend),
-      el('div', { class: 'bt-subhead' }, el('h3', { class: 'sec', text: '스텝 실행' }), el('span', { class: 'bt-dim', text: cur ? `${fmtDT(cur.started_at)} 플로우 실행` : '' }),
+      el('div', { class: 'bt-subhead' }, el('h3', { class: 'sec', text: '스텝 실행' }), el('span', { class: 'dim', text: cur ? `${fmtDT(cur.started_at)} 플로우 실행` : '' }),
         el('span', { class: 'bt-sp' }), el('a', { class: 'bt-link', href: '#runs?flow=' + encodeURIComponent(id) + '&range=7d', text: '전체 실행 이력 →' })),
       el('div', { class: 'card bt-card bt-tablebox' }, tbl),
     ];
@@ -523,12 +523,12 @@ async function renderFlow(host, params, query) {
       const lastR = arr[arr.length - 1];
       const total = arr.length && arr[0].started_at ? fmtDuration((lastR.ended_at || S.now) - arr[0].started_at) : DASH;
       return el('div', { class: 'gt-row' + (S.step === s.id ? ' sel' : '') },
-        el('div', { class: 'gt-label' }, el('code', { text: s.id, title: s.id }), el('span', { class: 'bt-dim', text: s.host })),
+        el('div', { class: 'gt-label' }, el('code', { text: s.id, title: s.id }), el('span', { class: 'dim', text: s.host })),
         track,
         el('div', { class: 'gt-dur num', text: total }));
     });
     return [pickerRow(), el('div', { class: 'card bt-card bt-gantt' },
-      el('div', { class: 'gt-row gt-head' }, el('div', { class: 'gt-label bt-dim', text: '스텝' }), ticks, el('div', { class: 'gt-dur bt-dim', text: '소요 시간' })),
+      el('div', { class: 'gt-row gt-head' }, el('div', { class: 'gt-label dim', text: '스텝' }), ticks, el('div', { class: 'gt-dur dim', text: '소요 시간' })),
       ...rows,
       el('div', { class: 'fg-legend' },
         [['succeeded', '성공'], ['running', '실행 중'], ['failed', '실패'], ['forced', '강제 OK']].map(([k, t]) => el('span', { class: 'fg-lg' }, el('i', { class: 'fg-sw st-' + k }), t)),
@@ -546,7 +546,7 @@ async function renderFlow(host, params, query) {
     const d = S.def;
     return [el('div', { class: 'card bt-card bt-def' },
       el('div', { class: 'bt-defhead' }, el('code', { text: d.file || '' }), el('span', { class: 'bt-sp' }),
-        d.sha ? el('span', { class: 'bt-dim', text: 'sha ' + String(d.sha).slice(0, 8) }) : null,
+        d.sha ? el('span', { class: 'dim', text: 'sha ' + String(d.sha).slice(0, 8) }) : null,
         edit ? el('a', { class: 'bt-btn', href: '#edit/' + encodeURIComponent(id), text: '편집' }) : null),
       el('pre', { class: 'bt-yaml', text: d.yaml || DASH }))];
   }
@@ -622,11 +622,11 @@ async function renderFlow(host, params, query) {
     const tries = (fr && fr.steps[run.step_id]) || [];
     const kv = (k, v) => [el('dt', { text: k }), el('dd', {}, v)];
     const state = el('span');
-    state.innerHTML = runStatusHTML(run) + (run.attempt > 1 ? ` <span class="bt-dim">시도 ${run.attempt}</span>` : '');
+    state.innerHTML = runStatusHTML(run) + (run.attempt > 1 ? ` <span class="dim">시도 ${run.attempt}</span>` : '');
     const tail = String(run.log_tail || '').split('\n').filter((x) => x !== '').slice(-20).join('\n');
     d.body.replaceChildren(
       el('div', { class: 'dw-state' }, state, el('span', { class: 'bt-sp' }), el('a', { class: 'bt-btn primary', href: '#run/' + id2, text: '타임머신에서 분석 →' })),
-      tries.length > 1 ? el('div', { class: 'dw-tries' }, el('span', { class: 'bt-dim', text: '시도' }),
+      tries.length > 1 ? el('div', { class: 'dw-tries' }, el('span', { class: 'dim', text: '시도' }),
         tries.map((t) => el('button', { type: 'button', class: 'dw-try s-' + (t.forced && t.status === 'SUCCEEDED' ? 'forced' : t.status.toLowerCase()) + (t.exec_id === run.exec_id ? ' on' : ''),
           title: `${STATE_LABEL[t.status] || t.status} · ${t.started_at ? fmtDuration((t.ended_at || Date.now()) - t.started_at) : DASH}`,
           onclick: () => goExec(t.exec_id) }, String(t.attempt)))) : null,
@@ -653,7 +653,7 @@ async function renderFlow(host, params, query) {
           { title: '강제 종료', message: `${run.step_id} 프로세스를 종료합니다.`, okText: '강제 종료', danger: true }, false, ev), 'danger'),
         ),
       why.length ? el('div', { class: 'bt-why', text: why.join(' · ') }) : null,
-      el('h4', { class: 'dw-h' }, '로그 ', el('span', { class: 'bt-dim', text: '마지막 20줄' })),
+      el('h4', { class: 'dw-h' }, '로그 ', el('span', { class: 'dim', text: '마지막 20줄' })),
       el('pre', { class: 'bt-log', text: tail || DASH }));
   }
 

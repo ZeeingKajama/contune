@@ -325,7 +325,7 @@ export async function render(root, params) {
       rep.resident ? el('span', { class: 'dim', text: ' · 상주', title: '스텝이 끝난 뒤에도 살아 있던 프로세스' }) : null,
       rep.leader ? el('span', { class: 'dim', text: ' · 스텝 프로세스', title: '에이전트가 띄운 스텝 자신' }) : null);
     head.append(
-      el('div', { class: 'ex-crumb' }, crumbs),
+      el('div', { class: 'crumb' }, crumbs),
       el('div', { class: 'ex-title' },
         el('span', { class: `badge ${level || 'silent'}`, text: `${mk} ${endText(rep)}` }),
         el('h2', { class: 'ex-h2', text: reportTitle(rule, rep) }),

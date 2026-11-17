@@ -1,8 +1,7 @@
 /* 배치: 배치판 카드 · 플로우 목록 · 플로우 상세(지표 카드 · 탭 · 그래프 · 격자 · 간트 · 정의) · 스텝 실행 서랍 */
 .bt-sp { flex:1; }
 .bt-sub { color:var(--t3); margin-left:6px; font-size:var(--fs-sm); font-weight:400; }
-.bt-dim { color:var(--t3); }
-.bt-dim.small { font-size:var(--fs-xs); }
+.dim.small { font-size:var(--fs-xs); }
 .bt-sep { color:var(--t3); margin:0 6px; font-weight:400; }
 .bt-btn { font:inherit; color:var(--t1); background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); padding:4px 12px; text-decoration:none; cursor:pointer; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
 .bt-btn:hover { border-color:var(--accent); }
@@ -74,9 +73,7 @@ button.danger:hover:not(:disabled) { border-color:var(--crit); }
 @keyframes bt-pulse { 50% { opacity:.45; } }
 
 /* ---- 플로우 상세 머리 ---- */
-.bt-crumb { font-size:var(--fs-md); color:var(--t3); margin-bottom:2px; }
-.bt-crumb a { color:var(--t2); text-decoration:none; }
-.bt-crumb a:hover { color:var(--accent); text-decoration:underline; }
+.bt-crumb { margin-bottom:2px; }
 .bt-titlerow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
 .bt-h { margin:0; font-size:20px; font-weight:700; font-family:ui-monospace,Consolas,monospace; }
 .bt-tstate .badge { font-size:var(--fs-md); padding:1px 8px; }
@@ -165,7 +162,7 @@ a.fg-svc:hover { border-color:var(--accent); text-decoration:underline; }
 .gd { font-size:10px; color:var(--t3); height:16px; line-height:16px; white-space:nowrap; overflow:visible; }
 .gr-label { display:flex; flex-direction:column; min-width:0; padding-right:8px; line-height:1.25; }
 .gr-label code { font-family:ui-monospace,Consolas,monospace; font-size:var(--fs-sm); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.gr-label .bt-dim { font-size:var(--fs-xs); }
+.gr-label .dim { font-size:var(--fs-xs); }
 .gc { height:28px; border:0; padding:0; background:none; display:flex; align-items:center; justify-content:center; cursor:pointer; border-radius:0; }
 .gc i { width:16px; height:16px; border-radius:3px; background:var(--c); display:flex; align-items:center; justify-content:center; }
 .gc i.s-running { animation:bt-pulse 1.6s ease-in-out infinite; }
@@ -182,7 +179,7 @@ a.fg-svc:hover { border-color:var(--accent); text-decoration:underline; }
 .gt-head { min-height:24px; font-size:var(--fs-sm); }
 .gt-label { display:flex; flex-direction:column; min-width:0; line-height:1.25; }
 .gt-label code { font-family:ui-monospace,Consolas,monospace; font-size:var(--fs-sm); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.gt-label .bt-dim { font-size:var(--fs-xs); }
+.gt-label .dim { font-size:var(--fs-xs); }
 .gt-axis { position:relative; height:20px; }
 .gt-axis span { position:absolute; transform:translateX(-50%); font-size:var(--fs-xs); color:var(--t3); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .gt-track { position:relative; height:28px; }

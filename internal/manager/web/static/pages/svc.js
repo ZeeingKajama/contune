@@ -222,7 +222,7 @@ async function renderTM(root, id, query) {
   let detail;
   try { detail = await api(detailPath(view())); } catch (e) {
     setTitle('서비스');
-    page.append(el('div', { class: 'tm-crumb' }, el('a', { href: '#svcs', text: '서비스' })),
+    page.append(el('div', { class: 'crumb' }, el('a', { href: '#svcs', text: '서비스' })),
       stateBox('error', e.status === 404 ? { text: '서비스를 찾을 수 없음', e, detail: '서비스 정의(services 폴더)에 없는 이름입니다. 목록에서 다시 고르세요', action: { text: '서비스 목록', href: '#svcs' } }
         : { text: '서비스를 불러오지 못함', e, retry: () => { root.replaceChildren(); return renderTM(root, id, query); } }));
     return;
@@ -277,7 +277,7 @@ async function renderTM(root, id, query) {
       return can('operator') ? `<a class="tm-dl" href="${esc(h)}" download>⤓ ${esc(t)}</a>` : `<span class="tm-dl locked" title="운영 이상만 할 수 있습니다">⤓ ${esc(t)}</span>`;
     }).join('');
     const panel = st.panel || panels.find((p) => p.id === st.detail.panel);
-    head.innerHTML = `<div class="tm-crumb"><a href="#svcs">서비스</a> › ${esc(def.title || id)}</div>
+    head.innerHTML = `<div class="crumb"><a href="#svcs">서비스</a> › ${esc(def.title || id)}</div>
       <div class="tm-title"><h2>${esc(def.title || id)}</h2><span class="badge ${v.cls === 'up' ? 'ok' : v.cls === 'down' ? 'crit' : 'silent'}">${v.mark} ${esc(v.text)}</span>${st.detail.auto ? '<span class="sv-auto" title="규칙 없이 실행 파일 이름으로 만든 서비스">자동</span>' : ''}<span class="grow"></span><span class="tm-dls">${links}</span></div>
       <div class="tm-meta"><span>서비스 ID <b class="sv-mono">${esc(id)}</b></span><span class="sv-hosts">서버 </span>
       <span class="sv-launch">기동 </span>

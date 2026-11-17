@@ -212,7 +212,7 @@ export async function render(host, params, query = {}) {
     const crumbs = [];
     if (detail.board) crumbs.push(`<a href="${esc(hashOfBoard(detail.board))}">${esc(detail.board)}</a>`);
     if (r.flow_id) crumbs.push(`<a href="${esc(detail.board ? hashOfFlow(detail.board, r.flow_id) : '#runs?range=7d&flow=' + q(r.flow_id))}">${esc(r.flow_id)}</a>`);
-    head.innerHTML = `<div class="tm-crumb"><a href="#runs">실행 이력</a> › ${crumbs.join(' › ')}</div>
+    head.innerHTML = `<div class="crumb"><a href="#runs">실행 이력</a> › ${crumbs.join(' › ')}</div>
       <div class="tm-title"><h2>${esc(r.step_id || r.exec_id)}</h2>${badgeHTML(r.forced ? 'FORCED' : r.status)}<span class="grow"></span><span class="tm-dls">${links}</span></div>
       <div class="tm-meta"><span>실행 ID <button type="button" class="tm-id" title="눌러서 복사">${esc(r.exec_id)}</button></span>
       <span>실행 서버 <a href="#host/${esc(q(r.host))}/overview">${esc(r.host || DASH)}</a>${group ? ` <span class="dim">(${esc(group)})</span>` : ''}</span>

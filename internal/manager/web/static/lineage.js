@@ -148,5 +148,5 @@ export function renderLineage(groups, opts = {}) {
     if (opts.here && g.exec_id === opts.here) return el('div', { class: 'lg-row' }, roots);
     return el('div', { class: 'lg-row' }, el('div', { class: 'lg-br root' }, runNode(g), roots.length ? el('div', { class: 'lg-kids' }, roots) : null));
   });
-  return el('div', { class: 'lg' + (opts.dim ? ' dim' : '') }, rows);
+  return el('div', { class: 'lg' + (opts.dim ? ' lg-dim' : '') }, rows);
 }

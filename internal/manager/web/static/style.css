@@ -50,6 +50,11 @@ input, select, textarea { font:inherit; color:var(--t1); background:var(--surfac
 .unit { font-size:.78em; color:var(--t3); margin-left:2px; }
 .grow { flex:1; }
 .empty { color:var(--t3); }
+.dim { color:var(--t3); } /* 흐린 글자(곁들이는 값·단위 설명) */
+/* 경로 줄(실행 이력 › 플로우 › …) */
+.crumb { font-size:var(--fs-sm); color:var(--t3); }
+.crumb a { color:var(--t2); text-decoration:none; }
+.crumb a:hover { color:var(--accent); text-decoration:underline; }
 .sec { font-size:15px; margin:0 0 8px; font-weight:600; }
 /* 카드 칸 하나(화면 클래스 .rbox .bt-card .bz-card .dcard .dpanel .srv-cell .tm-card .ex-card .rn-card는 차이만 덧붙인다) */
 .card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:10px 12px; min-width:0; }

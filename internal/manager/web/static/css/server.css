@@ -62,7 +62,7 @@
 
 /* 프로세스 탭(06 §7): 주인 머리 줄 + 프로세스 줄(systemd status의 CGroup 나무처럼) */
 .srv-ptbl { font-size:var(--fs-md); }
-.srv-ptbl .dim { color:var(--t3); font-size:var(--fs-sm); }
+.srv-ptbl .dim { font-size:var(--fs-sm); }
 .srv-ptbl tr.srv-grp td { background:var(--bg); border-bottom-color:color-mix(in srgb, var(--line) 60%, transparent); }
 .srv-ptbl tr.srv-grp.sel td { background:color-mix(in srgb, var(--accent) 8%, var(--surface)); }
 .srv-ptbl tr.srv-grp.sel td:first-child { box-shadow:inset 3px 0 0 var(--accent); }

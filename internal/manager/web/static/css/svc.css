@@ -1,5 +1,4 @@
 /* 서비스 #svcs · #svc/<id> (06, 카드 P-F). 서비스 타임머신은 tm.css(.tm-*)를 그대로 쓰고 여기는 서비스에만 있는 것 */
-.sv-card .dim, .sv-tm .dim { color:var(--t3); }
 .sv-mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:var(--fs-sm); font-weight:500; }
 
 /* 인스턴스 칩: 서버 이름 + 상태 기호(떠 있음 초록 ●, 없음 빨강 ■, 시간 외 회색 ○) */

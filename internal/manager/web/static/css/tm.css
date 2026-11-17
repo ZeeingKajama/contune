@@ -1,8 +1,6 @@
 /* 타임머신 #run/<exec_id> (05 §14.10) */
 .tm { display:flex; flex-direction:column; gap:12px; }
 .tm-head { display:flex; flex-direction:column; gap:2px; }
-.tm-crumb { font-size:var(--fs-sm); color:var(--t3); }
-.tm-crumb a { color:var(--t2); text-decoration:none; } .tm-crumb a:hover { color:var(--accent); text-decoration:underline; }
 .tm-title { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .tm-title h2 { margin:0; font-size:20px; }
 .tm-pcs .rn-pcs { margin-left:0; }
@@ -18,7 +16,6 @@
 .tm-meta { display:flex; flex-wrap:wrap; gap:4px 18px; align-items:center; font-size:var(--fs-md); color:var(--t3); }
 .tm-meta b { color:var(--t1); font-weight:500; }
 .tm-meta a { color:var(--accent); text-decoration:none; } .tm-meta a:hover { text-decoration:underline; }
-.tm-meta .dim { color:var(--t3); }
 .tm-id { font:inherit; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:var(--fs-sm); color:var(--t1); background:var(--bg); border:1px solid var(--line); border-radius:var(--r-sm); padding:0 5px; cursor:copy; }
 .tm-kpis { grid-template-columns:repeat(6,minmax(0,1fr)); margin-bottom:0; }
 .tm-kpis .bt-kpi .kv .num { font-size:16px; font-weight:650; }
@@ -140,8 +137,8 @@ a.lg-node.run:focus-visible { outline:2px solid var(--accent); outline-offset:1p
 .lg-node.end .lg-c { color:var(--t2); }
 .lg-node.leader { background:var(--bg); }
 .lg-node.focus { border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
-.lg.dim .lg-node.proc:not(.focus):not(.path) { opacity:.68; }
-.lg.dim .lg-node.proc:not(.focus):not(.path):hover { opacity:1; }
+.lg.lg-dim .lg-node.proc:not(.focus):not(.path) { opacity:.68; }
+.lg.lg-dim .lg-node.proc:not(.focus):not(.path):hover { opacity:1; }
 .lg-v { font-size:var(--fs-sm); color:var(--t2); white-space:nowrap; } .lg-v .unit { font-size:var(--fs-xs); color:var(--t3); margin-left:1px; }
 .lg-l3 { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 8px; margin-top:1px; font-size:var(--fs-sm); }
 .lg-svc, .lg-exit { color:var(--accent); text-decoration:none; white-space:nowrap; }
