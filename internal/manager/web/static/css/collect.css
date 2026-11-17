@@ -183,3 +183,13 @@ button.cw-chip.num { padding:1px 10px; }
 .cw-warnt { color:var(--warn); }
 .cw-exp { margin-left:auto; }
 .cl-mcell { align-items:center; }
+
+/* 마법사: 줄·파일을 고르는 단추(div·span이던 것) */
+button.cw-line.pick { width:100%; box-sizing:border-box; border-top:0; border-right:0; border-bottom:0; border-radius:0; background:transparent; text-align:left; font:inherit; color:inherit; align-items:baseline; }
+button.cw-line.pick.error { background:color-mix(in srgb, var(--crit) 11%, transparent); }
+button.cw-line.pick.warn { background:color-mix(in srgb, var(--warn) 12%, transparent); }
+button.cw-line.pick.sel { background:color-mix(in srgb, var(--accent) 12%, transparent); }
+button.cw-line.pick:hover { background:color-mix(in srgb, var(--accent) 7%, transparent); }
+button.cw-fbtn { all:unset; box-sizing:border-box; cursor:pointer; color:var(--accent); font:inherit; word-break:break-all; }
+button.cw-fbtn:hover { text-decoration:underline; }
+button.cw-fbtn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
