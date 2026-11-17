@@ -250,6 +250,14 @@ export function lineChart(host, opts) {
   function paintHead() {
     uEl.textContent = prep.unit;
     uEl.hidden = !prep.unit;
+    // 화면 읽기용: 제목 + 현재 값(계열이 여럿이면 첫 둘)
+    const parts = prep.drawnIdx.slice(0, 2).map((i) => {
+      const st = seriesStats(prep.ys[i]);
+      const v = st ? `${fmtVal(st.last, prep.digits)}${prep.unit || ''}` : '값 없음';
+      return drawnCount > 1 && series[i].label ? `${series[i].label} ${v}` : `현재 ${v}`;
+    });
+    host.setAttribute('role', 'img');
+    host.setAttribute('aria-label', [title, ...parts].filter(Boolean).join(', '));
   }
   function paintLegend() {
     if (!legendBody) return;
