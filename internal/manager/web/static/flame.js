@@ -99,7 +99,7 @@ export function renderFlame(el, { stacks, title, subtitle, highlight } = {}) {
   let zoom = null; // 확대한 노드
   const total = tree.value;
 
-  function draw() {
+  function draw(refocus) {
     wrap.innerHTML = '';
     const W = Math.max(200, wrap.clientWidth || el.clientWidth || 600);
     const base = zoom || tree;
@@ -117,7 +117,9 @@ export function renderFlame(el, { stacks, title, subtitle, highlight } = {}) {
     })(base, 0, 0, W);
     const svg = svgEl('svg', { width: W, height: (maxDepth + 1) * ROW, class: 'flame-svg' });
     for (const { node, depth, x, w } of cells) {
-      const g = svgEl('g', { class: 'flame-cell' + (highlight && node.name === highlight ? ' hl' : '') });
+      const pctText = `${((node.value / total) * 100).toFixed(1)}%`;
+      const g = svgEl('g', { class: 'flame-cell' + (highlight && node.name === highlight ? ' hl' : ''), tabindex: '0', role: 'button',
+        'aria-label': `${node.name} · 샘플 ${node.value.toLocaleString('en-US')} · ${pctText}${node === zoom ? ' (확대 중, 누르면 되돌림)' : ''}` });
       const rect = svgEl('rect', { x, y: depth * ROW, width: Math.max(w - 1, 1), height: ROW - 1, fill: node === tree ? '#d9dde5' : hashColor(node.name) });
       g.append(rect);
       const chars = Math.floor((w - 6) / 6.5);
@@ -134,14 +136,19 @@ export function renderFlame(el, { stacks, title, subtitle, highlight } = {}) {
         tip.style.top = `${ev.clientY - r.top + 12}px`;
       });
       g.addEventListener('mouseleave', () => { tip.hidden = true; });
-      g.addEventListener('click', () => {
+      const pick = () => {
         if (node === tree || node === zoom) zoom = null;
         else zoom = node;
-        draw();
-      });
+        draw(true);
+      };
+      g.addEventListener('click', pick);
+      g.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pick(); } });
+      g.addEventListener('focus', () => { const r = box.getBoundingClientRect(), c = g.getBoundingClientRect(); tip.hidden = false; tip.textContent = g.getAttribute('aria-label'); tip.style.left = `${c.left - r.left + 4}px`; tip.style.top = `${c.bottom - r.top + 4}px`; });
+      g.addEventListener('blur', () => { tip.hidden = true; });
       svg.append(g);
     }
     wrap.append(svg);
+    if (refocus) svg.querySelector('.flame-cell')?.focus({ preventScroll: true });
   }
   draw();
   return { destroy() { el.innerHTML = ''; } };
