@@ -24,7 +24,7 @@
 .dw-b .dwatch { height:100%; display:flex; flex-direction:column; }
 .dw-b .dwatch .wl { flex:1 1 0; min-height:0; max-height:none; }
 .dw-b .dwatch .wok { margin-top:6px; flex:none; }
-.dwg-more { display:block; padding:5px 6px; font-size:12px; color:var(--accent); text-decoration:none; }
+.dwg-more { display:block; padding:5px 6px; font-size:var(--fs-sm); color:var(--accent); text-decoration:none; }
 .dwg-more:hover { text-decoration:underline; }
 
 /* 서버 맵: 범례만 남은 머리는 오른쪽에 */
@@ -36,10 +36,10 @@
 /* 로그 · 서비스: 한 줄 = 고정 칸 격자(줄마다 같은 칸이라 열이 맞는다), 메시지·이름은 말줄임 */
 .dwg-logs, .dwg-services { display:flex; flex-direction:column; }
 .dwg-list { flex:1 1 auto; min-height:0; overflow:auto; }
-.dwg-foot { flex:none; padding:4px 6px 0; font-size:11px; color:var(--t3); }
+.dwg-foot { flex:none; padding:4px 6px 0; font-size:var(--fs-xs); color:var(--t3); }
 a.dwg-foot { color:var(--accent); }
 .dwg-lr, .dwg-sr { display:grid; align-items:baseline; column-gap:8px; padding:3px 6px; border-bottom:1px solid var(--line); border-left:3px solid transparent;
-  font-size:12px; color:var(--t2); text-decoration:none; white-space:nowrap; min-width:0; }
+  font-size:var(--fs-sm); color:var(--t2); text-decoration:none; white-space:nowrap; min-width:0; }
 .dwg-lr > *, .dwg-sr > * { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .dwg-lr.go:hover, a.dwg-sr:hover { background:var(--bg); }
 .dwg-lr.go:hover .dwg-msg, a.dwg-sr:hover .dwg-svc { color:var(--accent); text-decoration:underline; }
@@ -59,7 +59,7 @@ a.dwg-foot { color:var(--accent); }
 .dwg-sr { grid-template-columns:minmax(0,92px) minmax(0,1fr) minmax(0,1fr) 82px 48px 58px; }
 .dwg-sr.down { border-left-color:var(--crit); }
 .dwg-st { display:inline-flex; align-items:baseline; gap:4px; }
-.dwg-st i { font-style:normal; font-size:11px; flex:none; }
+.dwg-st i { font-style:normal; font-size:var(--fs-xs); flex:none; }
 .dwg-sr.up .dwg-st i { color:var(--ok); }
 .dwg-sr.down .dwg-st { color:var(--crit); font-weight:600; } .dwg-sr.down .dwg-st i { color:var(--crit); }
 .dwg-sr.off .dwg-st, .dwg-sr.off .dwg-svc, .dwg-sr.off .dwg-host { color:var(--t3); } .dwg-sr.off .dwg-st i { color:var(--silent); }
