@@ -1,0 +1,6 @@
+[{"hash":"dashboard"},{"hash":"hosts"},{"hash":"host/match-01/overview"},{"hash":"host/match-01/cpu"},{"hash":"host/batch-02/proc"},
+ {"hash":"board/"},{"hash":"board/개장준비","name":"board_one"},{"hash":"board/개장준비/market-open","name":"flow"},{"hash":"edit/market-open","h":900},
+ {"hash":"biz"},{"hash":"biz/matching"},{"hash":"svcs"},{"hash":"svc/matching?host=match-01","name":"svc"},
+ {"hash":"dashes"},{"hash":"dashedit/trading","h":900},{"hash":"dash/trading?tv=1","name":"tv","w":1920,"h":1080,"theme":"dark"},
+ {"hash":"runs"},{"hash":"exits","name":"run","follow":"a[href^='#run/']"},{"hash":"exits"},{"hash":"exit/exit-svr_b-4102","h":2200},
+ {"hash":"alerts"},{"hash":"risk"},{"hash":"audit"},{"hash":"collect"},{"hash":"dashboard","name":"login","search":"?login=1","h":900}]
