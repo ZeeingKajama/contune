@@ -46,6 +46,8 @@ async function route() {
   const r = routeOf(location.hash);
   document.querySelectorAll('#menu a').forEach((a) => a.classList.toggle('on', a.dataset.m === MENU[r.name]));
   document.body.dataset.page = r.name;
+  const on = document.querySelector('#menu a.on');
+  if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   setTitle(TITLE[r.name] || '');
   // 같은 화면 파일 안의 이동(보드 고르기·뒤로 가기)은 그 화면의 reroute(params, query)가 true면 다시 그리지 않는다
   if (current && current.reroute && currentPath === PAGES[r.name]) {
@@ -92,6 +94,8 @@ function initTop() {
   const dot = document.getElementById('dot'), warn = document.getElementById('warnbar');
   const apply = (ok) => {
     dot.className = 'dot ' + (ok ? 'ok' : 'fail');
+    const t = ok ? '연결됨' : '응답 실패';
+    dot.title = t; dot.setAttribute('aria-label', t);
     warn.hidden = ok;
   };
   onHealth(apply); apply(isHealthy());
@@ -144,8 +148,52 @@ async function doLogout() {
   askLogin('');
 }
 
+// 트리 여닫기: 넓은 화면은 자리를 차지하고(eum.tree.hidden에 기억), 좁은 화면(#tree가 fixed가 되는 구간, css/shell.css)은 서랍으로 덮는다.
+function initTreeToggle() {
+  const btn = document.getElementById('tree-toggle'), tree = document.getElementById('tree'), scrim = document.getElementById('tree-scrim');
+  const overlay = () => getComputedStyle(tree).position === 'fixed';
+  const stored = () => { try { return localStorage.getItem('eum.tree.hidden') === '1'; } catch (e) { return false; } };
+  let drawer = innerWidth > 900 && !stored(); // 서랍 기본값: 900px 이하는 닫힘
+  let wasOverlay = overlay();
+  const sync = () => {
+    const ov = overlay();
+    if (ov !== wasOverlay) { wasOverlay = ov; if (ov) drawer = false; }
+    document.body.classList.toggle('tree-off', !ov && stored());
+    document.body.classList.toggle('tree-open', ov && drawer);
+    scrim.hidden = !(ov && drawer);
+    btn.setAttribute('aria-expanded', String(ov ? drawer : !stored()));
+  };
+  const close = (back) => { if (!drawer) return; drawer = false; sync(); if (back) btn.focus(); };
+  btn.addEventListener('click', () => {
+    if (overlay()) {
+      drawer = !drawer; sync();
+      if (drawer) { const q = tree.querySelector('input'); if (q) q.focus(); } else btn.focus();
+    } else {
+      try { localStorage.setItem('eum.tree.hidden', stored() ? '0' : '1'); } catch (e) { /* 편의 기능 */ }
+      sync();
+    }
+  });
+  scrim.addEventListener('click', () => close(false));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay() && drawer) { e.preventDefault(); close(true); } });
+  window.addEventListener('hashchange', () => { if (overlay()) close(false); });
+  window.addEventListener('resize', sync);
+  sync();
+}
+
+// 600px 이하: 감사 기록·사용자·로그아웃(#user)은 ⋯ 단추의 작은 메뉴로
+function initMore() {
+  const btn = document.getElementById('more'), box = document.getElementById('user');
+  const set = (open) => { document.body.classList.toggle('more-open', open); btn.setAttribute('aria-expanded', String(open)); };
+  btn.addEventListener('click', (e) => { e.stopPropagation(); set(!document.body.classList.contains('more-open')); });
+  document.addEventListener('click', (e) => { if (!box.contains(e.target)) set(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('more-open')) { set(false); btn.focus(); } });
+  window.addEventListener('hashchange', () => set(false));
+}
+
 function start() {
   initTop();
+  initTreeToggle();
+  initMore();
   initQuickJump();
   const tree = createTree(document.getElementById('tree'), { onBoards: (b) => { boards = b; } });
   onAuthRequired(() => askLogin('세션이 끝났습니다. 다시 로그인해 주세요'));
