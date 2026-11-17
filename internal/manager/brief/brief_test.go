@@ -142,7 +142,7 @@ func TestTraceTileAlertFindsHotFunction(t *testing.T) {
 		t.Fatalf("in_tps=%+v", in)
 	}
 	r := tr.Rule
-	if !strings.HasPrefix(r.Title, "원인 후보: book_insert") || r.Confidence != "high" || r.By != "rule" {
+	if r.Title != "원인 후보 book_insert — 주문 유입량 ×4.0" || strings.Contains(r.Detail, "습니다") || r.Confidence != "high" || r.By != "rule" {
 		t.Fatalf("rule=%+v", r)
 	}
 	for _, id := range r.EvidenceIDs {
@@ -153,7 +153,7 @@ func TestTraceTileAlertFindsHotFunction(t *testing.T) {
 	if !strings.Contains(r.Detail, "주문 유입량 1,500 → 6,000 TPS(×4.0)") {
 		t.Fatalf("detail=%s", r.Detail)
 	}
-	if len(r.NextChecks) == 0 || !strings.Contains(strings.Join(r.NextChecks, "\n"), "주문 유입량 증가") {
+	if len(r.NextChecks) == 0 || !strings.Contains(strings.Join(r.NextChecks, "\n"), "주문 유입량 급증 출처 확인") {
 		t.Fatalf("checks=%v", r.NextChecks)
 	}
 	if tr.AI.State != "none" || tr.Diag.By != "rule" {
@@ -190,7 +190,7 @@ func TestTraceNoOwnerAndExit(t *testing.T) {
 		t.Fatalf("host: %+v", tr)
 	}
 	m := w.alert(t, model.Alert{TS: t0, Kind: "host", DedupKey: "host:match-01", Level: "warn", State: "firing", Host: "match-01", Message: "match-01 서버 경고: CPU 사용률 ≥ 70%"})
-	if tr := s.Trace(ctx, m); tr.State != "ok" || tr.Owner != owner0 || tr.Found != "이 서버에서 도는 서비스" {
+	if tr := s.Trace(ctx, m); tr.State != "ok" || tr.Owner != owner0 || tr.Found != "해당 서버의 서비스" {
 		t.Fatalf("host match-01: state=%s owner=%s found=%s", tr.State, tr.Owner, tr.Found)
 	}
 	x := w.alert(t, model.Alert{TS: t0, Kind: "exit", DedupKey: "exit:01ABC", Level: "crit", State: "firing", Host: "match-01", Message: "체결 서비스 종료"})
@@ -204,7 +204,7 @@ func TestTraceNoProfile(t *testing.T) {
 	a := w.alert(t, model.Alert{TS: t0, Kind: "log", DedupKey: "log:feed-01:quote", Level: "crit", State: "firing", Host: "feed-01",
 		ExecID: model.ServiceOwner("quote", "feed-01"), Message: "(E) 3건 · 시세 원천 끊김"})
 	tr := w.svc().Trace(context.Background(), a)
-	if tr.State != "no_profile" || !strings.Contains(tr.Rule.Title, "함수 표본 없음") || tr.Service != "quote" {
+	if tr.State != "no_profile" || !strings.Contains(tr.Rule.Title, "프로파일 샘플 없음") || tr.Service != "quote" {
 		t.Fatalf("state=%s service=%s rule=%+v", tr.State, tr.Service, tr.Rule)
 	}
 }
@@ -303,7 +303,7 @@ func TestTraceLLMDraftIsCheckedAndUsed(t *testing.T) {
 	f.mu.Lock()
 	n, p := len(f.reqs), f.reqs[0].Prompt
 	f.mu.Unlock()
-	if n != 1 || !strings.Contains(p, `"id": "fn:book_insert"`) || !strings.Contains(p, "규칙 판단(참고): 원인 후보: book_insert") {
+	if n != 1 || !strings.Contains(p, `"id": "fn:book_insert"`) || !strings.Contains(p, "규칙 판단(참고): 원인 후보 book_insert") {
 		t.Fatalf("요청 %d번, prompt=%s", n, p)
 	}
 	s.Trace(ctx, a) // 끝난 추적은 다시 묻지 않는다
@@ -379,7 +379,7 @@ func TestBriefRuleNamesCauseFunction(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"체결: p99 응답 시간 80ms (경고 50) · match-01", "원인 후보 book_insert: Self 비중", "서버 이상 1대: dw-02 메모리 사용률 ≥ 90%"} {
+	for _, want := range []string{"체결: p99 응답 시간 80ms (경고 50) · match-01 · 1분 경과", "원인 후보 book_insert — 주문 유입량 ×4.0", "서버 이상 1대: dw-02 메모리 사용률 ≥ 90%"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("줄에 %q 없음:\n%s", want, text)
 		}
@@ -403,7 +403,7 @@ func TestBriefIdleAndRecent(t *testing.T) {
 	a.State, a.ResolvedAt = "resolved", t0+40_000
 	w.alert(t, a)
 	b = w.svc().Brief(context.Background(), "")
-	if !strings.HasPrefix(b.Headline, "지금은 정상") || b.Trace == nil || b.Trace.Top == nil {
+	if !strings.HasPrefix(b.Headline, "현재 정상") || b.Trace == nil || b.Trace.Top == nil {
 		t.Fatalf("recent: headline=%q trace=%+v", b.Headline, b.Trace)
 	}
 }
@@ -501,7 +501,7 @@ func TestParseBriefRejects(t *testing.T) {
 		}
 	}
 	b, err := parseBrief(`{"headline":"h","lines":[{"text":"a","evidence_ids":["alert:1","alert:1"," risk "]}],"next_checks":["x","","y","z","w"]}`, ev)
-	if err != nil || len(b.Lines[0].Refs) != 2 || len(b.NextChecks) != 3 {
+	if err != nil || len(b.Lines[0].Refs) != 2 || len(b.NextChecks) != maxBriefChecks {
 		t.Fatalf("b=%+v err=%v", b, err)
 	}
 }

@@ -361,7 +361,7 @@ export async function render(host, params) {
     if (!rows.length) return;
     const f = (v) => v.toFixed(1);
     const tr = rows.map((r) => `<tr class="${st.hl === r.leaf ? 'on' : ''}" data-leaf="${esc(r.leaf)}"><td class="fn">${esc(r.leaf)}</td><td>${f(r.pctA)}%</td><td>${f(r.pctB)}%</td><td class="${r.up ? 'up' : 'down'}">${r.up ? '+' : ''}${f(r.diff)}%p</td><td><span class="tm-cbar ${r.up ? 'up' : 'down'}" style="width:${r.bar}%"></span></td></tr>`).join('');
-    cmpEl.innerHTML = `<table class="tm-cmp-t"><thead><tr><th>함수</th><th>기준(A) Self 비중</th><th>비교(B) Self 비중</th><th>변화</th><th></th></tr></thead><tbody>${tr}</tbody></table>`;
+    cmpEl.innerHTML = `<table class="tm-cmp-t"><thead><tr><th>함수</th><th>기준(A) Self CPU 점유율</th><th>비교(B) Self CPU 점유율</th><th>변화</th><th></th></tr></thead><tbody>${tr}</tbody></table>`;
     for (const row of cmpEl.querySelectorAll('tbody tr')) {
       row.addEventListener('click', () => { st.hl = st.hl === row.dataset.leaf ? null : row.dataset.leaf; drawFlames(); });
     }

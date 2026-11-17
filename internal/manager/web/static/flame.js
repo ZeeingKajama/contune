@@ -56,7 +56,7 @@ export function verdict(cmp) {
   if (!cmp || !cmp.length) return '';
   const top = cmp.reduce((m, c) => (c.diff > m.diff ? c : m), cmp[0]);
   if (!(top.diff > 0)) return '';
-  return `\`${top.leaf}\` 비중 **${Math.round(top.pctA)}% → ${Math.round(top.pctB)}%**`;
+  return `\`${top.leaf}\` 점유율 **${Math.round(top.pctA)}% → ${Math.round(top.pctB)}%**`;
 }
 
 export function topLeaves(stacks, n = 10) {
@@ -156,7 +156,7 @@ export function renderTopTable(el, stacks) {
   }
   const t = document.createElement('table');
   t.className = 'tbl flame-top';
-  t.innerHTML = '<thead><tr><th>함수</th><th class="num">샘플</th><th class="num">Self 비중</th></tr></thead>';
+  t.innerHTML = '<thead><tr><th>함수</th><th class="num">샘플</th><th class="num">Self CPU 점유율</th></tr></thead>';
   const tb = document.createElement('tbody');
   for (const r of rows) {
     const tr = document.createElement('tr');
@@ -188,7 +188,7 @@ export function selftest() {
     ['compareLeaf pctA 15', Math.round(cmp[0].pctA) === 15],
     ['compareLeaf pctB 63', Math.round(cmp[0].pctB) === 63],
     ['compareLeaf diff 내림차순', cmp.every((c, i) => i === 0 || cmp[i - 1].diff >= c.diff)],
-    ['verdict 문구', v === '`book_insert` 비중 **15% → 63%**'],
+    ['verdict 문구', v === '`book_insert` 점유율 **15% → 63%**'],
     ['verdict 빈 입력', verdict([]) === ''],
     ['topLeaves 상위', top.length === 2 && top[0].leaf === 'book_insert'],
     ['buildTree 합계', buildTree(A).value === 100],

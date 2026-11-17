@@ -317,19 +317,19 @@ function mockTrace(c, a) {
   const ai = c.flags.llm ? { state: 'ok', model: 'mock-llm', at: now - 4 * SEC } : { state: 'none' };
   const base = { alert_id: a.id, alert: a, final: true, at: now, functions: [], metrics: [], logs: [], log_count: 0, audit: [], evidence: [{ id: 'alert', kind: 'alert', label: '알림', title: a.message, alert_id: a.id, alert: a }], ai };
   if (a.kind === 'exit') {
-    const d = { title: '종료 알림은 종료 보고서가 원인(신호·스택·커널 기록)을 따로 가립니다', detail: '', confidence: 'low', evidence_ids: ['alert'], next_checks: ['종료 보고서에서 신호·호출 스택·커널 기록 확인'], by: 'rule' };
+    const d = { title: '종료 알림 — 원인은 종료 보고서(신호·콜스택·커널 로그)에서 분석', detail: '', confidence: 'low', evidence_ids: ['alert'], next_checks: ['종료 보고서에서 신호·콜스택·커널 로그 확인'], by: 'rule' };
     return { ...base, state: 'exit', note: d.title, rule: d, diag: d, ai: { state: 'none' } };
   }
   if (a.kind === 'service') { // 서비스 미기동: 함수 비교 대신 기동·종료 기록으로(매니저의 state down과 같은 모양)
     const title = String(a.message || '').split('(')[0] || a.name;
-    const note = '서비스가 떠 있지 않다는 알림이라 함수 비교 대신 기동·종료 기록(종료 보고서)을 봅니다';
-    const d = { title: `${title} · ${a.host}: 서비스 미기동 — 기동·종료 기록 확인`, detail: note, confidence: 'low', evidence_ids: ['alert'],
-      next_checks: ['서비스 타임머신 사건 탭에서 마지막 종료 보고서와 기동한 실행 확인', '기동 배치(플로우)가 실패·대기 중인지 확인'], by: 'rule' };
+    const note = '서비스 미기동 알림 — 프로파일 비교 대상 없음, 기동·종료 이력(종료 보고서) 확인';
+    const d = { title: `${title} · ${a.host}: 서비스 미기동 — 기동·종료 이력 확인`, detail: '', confidence: 'low', evidence_ids: ['alert'],
+      next_checks: ['서비스 타임머신 사건 탭에서 마지막 종료 보고서·기동 실행 확인', '기동 배치(플로우) 실패·대기 여부 확인'], by: 'rule' };
     return { ...base, state: 'down', note, owner: `svc:${a.name}@${a.host}`, service: a.name, service_title: title, host: a.host, found: '서비스 알림',
       a: { from: 0, to: 0, samples: 0 }, b: { from: 0, to: 0, samples: 0 }, compared: false, rule: d, diag: d, ai: { state: 'none' } };
   }
   if (!TRACE_IDS.has(a.id) || !c.sig.surge) {
-    const d = { title: `${a.host || a.group || '이 알림'}: 따라갈 함수 추적 서비스가 없습니다`, detail: '', confidence: 'low', evidence_ids: ['alert'], next_checks: [], by: 'rule' };
+    const d = { title: `${a.host || a.group || '이 알림'}: 프로파일 대상 서비스 없음`, detail: '', confidence: 'low', evidence_ids: ['alert'], next_checks: [], by: 'rule' };
     return { ...base, state: 'no_owner', note: d.title, rule: d, diag: d, ai: { state: 'none' } };
   }
   const T = a.ts;
@@ -346,14 +346,14 @@ function mockTrace(c, a) {
     { name: 'biz.order.latency_p99_ms', title: 'p99 응답 시간', unit: 'ms', signal: 'latency', a: 18, b: 142, peak: 210 },
   ];
   const ev = [...base.evidence,
-    { id: 'owner', kind: 'owner', label: '체결 · match-01', title: '따라간 주인: 체결 · match-01', lines: ['찾은 길: 업무 패널 \'체결\'의 서비스'], host: 'match-01', service: 'matching' },
-    { id: 'window', kind: 'window', label: '구간', title: 'A(평소) · B(알림 구간)', lines: [`A 함수 표본 861개 · B 함수 표본 2,412개`] },
-    ...fns.map((f) => ({ id: 'fn:' + f.leaf, kind: 'fn', label: f.leaf, title: '함수 ' + f.leaf, lines: [`Self 비중 A ${f.pct_a}% → B ${f.pct_b}%`] })),
-    { id: 'path', kind: 'path', label: '호출 경로', title: '호출 경로(B에서 가장 많은 스택)', lines: [path.join(' › ')] },
+    { id: 'owner', kind: 'owner', label: '체결 · match-01', title: '대상 프로세스: 체결 · match-01', lines: ['식별 경로: 업무 패널 \'체결\'의 서비스', '프로세스 키: svc:matching@match-01'], host: 'match-01', service: 'matching' },
+    { id: 'window', kind: 'window', label: '구간', title: 'A(기준 구간) · B(이상 구간)', lines: [`A 프로파일 샘플 861개 · B 프로파일 샘플 2,412개`] },
+    ...fns.map((f) => ({ id: 'fn:' + f.leaf, kind: 'fn', label: f.leaf, title: '함수 ' + f.leaf, lines: [`Self CPU 점유율 A ${f.pct_a}% → B ${f.pct_b}%`] })),
+    { id: 'path', kind: 'path', label: '콜스택', title: '콜스택(B 구간 최빈 스택)', lines: [path.join(' › ')] },
     ...metrics.map((m) => ({ id: 'metric:' + m.name, kind: 'metric', label: m.title, title: m.title, lines: [`평균 A ${fmtN(m.a)} → B ${fmtN(m.b)} ${m.unit}`] })),
   ];
-  const rule = { title: '원인 후보: book_insert (Self 비중 2.4% → 61.8%)', detail: '체결 · match-01의 함수 표본을 A(평소)와 B(알림 구간)로 나눠 비교했습니다. book_insert의 Self 비중이 2.4%에서 61.8%로 +59.4%p 바뀌어 가장 크게 늘었습니다. 호출 경로는 matching_svc › main › handle_order › book_insert입니다. 같은 구간 주문 유입량 1,500 → 6,000 TPS(×4.0).', confidence: 'high', evidence_ids: ['alert', 'owner', 'window', 'fn:book_insert', 'path', 'metric:biz.order.in_tps'], next_checks: ['타임머신 B 구간 플레임 그래프에서 book_insert를 부른 경로 확인', '주문 유입량 증가가 정상 거래인지, 비정상 호출·재시도인지 확인', 'book_insert 코드에서 입력 크기에 비례하는 반복·탐색·잠금 대기가 있는지 확인'], by: 'rule' };
-  const llm = { title: 'book_insert 비중 급증 — 같은 시각 주문 유입 4배', detail: 'book_insert Self 비중 2.4% → 61.8%. 같은 구간 주문 유입량 1,500 → 6,000 TPS(×4.0), 호출 경로 handle_order › book_insert', confidence: 'high', evidence_ids: ['fn:book_insert', 'path', 'metric:biz.order.in_tps'], next_checks: ['B 구간 플레임 그래프에서 book_insert 호출 경로 확인', '주문 유입 증가가 정상 거래인지 확인'], by: 'llm', model: 'mock-llm', at: now - 4 * SEC };
+  const rule = { title: '원인 후보 book_insert — 주문 유입량 ×4.0', detail: 'Self CPU 점유율 2.4% → 61.8%(+59.4%p) · 동시간대 주문 유입량 1,500 → 6,000 TPS(×4.0), 서비스 CPU 사용률 21 → 100%(×4.8)', confidence: 'high', evidence_ids: ['alert', 'owner', 'window', 'fn:book_insert', 'path', 'metric:biz.order.in_tps'], next_checks: ['타임머신 B 구간 플레임 그래프에서 book_insert 콜스택 확인', '주문 유입량 급증 출처 확인(정상 거래 / 재시도·비정상 호출)', 'book_insert의 입력 크기 비례 연산(반복·탐색)·락 경합 확인'], by: 'rule' };
+  const llm = { title: 'book_insert CPU 포화 — 주문 유입 ×4.0', detail: '점유율 이동이 유입 배수보다 큼 — 건당 삽입 비용 증가, 원인은 근거에 없음', confidence: 'medium', evidence_ids: ['fn:book_insert', 'metric:biz.order.in_tps', 'metric:svc.cpu.pct'], next_checks: ['book_insert 호가 단계 수·삽입 위치 분포 확인', 'rebuild_book B 구간 호출 조건·빈도 확인', '유입 급증 종목·주문 유형 편중 확인'], by: 'llm', model: 'mock-llm', at: now - 4 * SEC };
   return { ...base, state: 'ok', owner: 'svc:matching@match-01', service: 'matching', service_title: '체결', host: 'match-01', found: '업무 패널 \'체결\'의 서비스',
     a: A, b: B, compared: true, functions: fns, top: fns[0], path, path_pct: 48.2, metrics, evidence: ev, rule, llm: c.flags.llm ? llm : undefined, diag: c.flags.llm ? llm : rule };
 }
@@ -379,7 +379,7 @@ function brief(c) {
     const t = mockTrace(c, biz.find((a) => a.kind === 'tile') || biz[0]);
     tb = { alert_id: t.alert_id, message: t.alert.message, level: t.alert.level, state: t.state, final: true, service: t.service, service_title: t.service_title, host: t.host, a: t.a, b: t.b, compared: t.compared, top: t.top, path: t.path, metric: '주문 유입량 1,500 → 6,000 TPS(×4.0)', diag: t.diag, ai: t.ai };
     ev.push({ id: 'trace', kind: 'trace', label: '원인 추적', title: '원인 추적: ' + t.alert.message, lines: [t.diag.title], alert_id: t.alert_id, host: t.host, service: t.service });
-    lines.push({ text: '원인 후보 book_insert: Self 비중 2.4% → 61.8%(+59.4%p), 같은 시각 주문 유입량 1,500 → 6,000 TPS(×4.0)', level: 'crit', refs: ['trace'] });
+    lines.push({ text: '원인 후보 book_insert — 주문 유입량 ×4.0', level: 'crit', refs: ['trace'] });
   }
   if (hosts.length) {
     const ids = hosts.map(alertEv);
@@ -389,14 +389,14 @@ function brief(c) {
   const level = firing.some((a) => a.level === 'crit') ? 'crit' : firing.length ? 'warn' : 'ok';
   const rule = { at: now, written_at: now, level, by: 'rule', evidence: ev, trace: tb, lines: lines.slice(0, 4),
     headline: biz.length ? '체결 응답 지연(위험) — 원인 후보 book_insert' : hosts.length ? `위험 ${hosts.length}건 — ${hosts[0].message}` : '전체 정상 — 진행 중 알림 없음',
-    next_checks: biz.length ? ['타임머신 B 구간 플레임 그래프에서 book_insert를 부른 경로 확인', '주문 유입량 증가가 정상 거래인지, 비정상 호출·재시도인지 확인'] : [],
+    next_checks: biz.length ? ['타임머신 B 구간 플레임 그래프에서 book_insert 콜스택 확인', '주문 유입량 급증 출처 확인(정상 거래 / 재시도·비정상 호출)'] : [],
     ai: { state: 'none' } };
   if (!c.flags.llm) return ok(rule);
   return ok({ ...rule, by: 'llm', model: 'mock-llm', written_at: now - 4 * SEC, ai: { state: 'ok', model: 'mock-llm', at: now - 4 * SEC }, rule: { ...rule, rule: undefined },
-    headline: biz.length ? '체결 응답 지연 — 원인 후보 book_insert, 주문 유입 4배' : rule.headline,
+    headline: biz.length ? '체결 응답 지연(위험) — 원인 후보 book_insert' : rule.headline,
     lines: biz.length ? [
       { text: '체결 p99 응답 시간·대기 큐 위험 · match-01', level: 'crit', refs: ev.filter((e) => e.kind === 'alert' && e.alert.group === '매매체결').map((e) => e.id) },
-      { text: '원인 후보 book_insert: Self 비중 2.4% → 61.8%, 같은 시각 주문 유입 4배', level: 'crit', refs: ['trace'] },
+      { text: 'book_insert CPU 포화 · 유발 요인 주문 유입 ×4.0', level: 'crit', refs: ['trace'] },
       ...lines.filter((l) => l.text.startsWith('서버')),
     ] : rule.lines });
 }

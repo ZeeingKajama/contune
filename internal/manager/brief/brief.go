@@ -617,12 +617,12 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 	addAlert := func(a model.Alert) string {
 		id := fmt.Sprintf("alert:%d", a.ID)
 		ac := a
-		state := "진행 중 " + span(now-a.TS)
+		state := span(now-a.TS) + " 경과"
 		if a.State == "resolved" {
-			state = fmt.Sprintf("%s 해소(%s 동안)", clock(a.ResolvedAt, s.d.Loc), span(a.ResolvedAt-a.TS))
+			state = fmt.Sprintf("%s 해소(%s 지속)", clock(a.ResolvedAt, s.d.Loc), span(a.ResolvedAt-a.TS))
 		}
 		add(Evidence{ID: id, Kind: "alert", Label: alertLabel(a), Title: a.Message,
-			Lines:   []string{fmt.Sprintf("%s · %s · %s 열림 · %s", levelText(a.Level), kindText(a.Kind), clock(a.TS, s.d.Loc), state)},
+			Lines:   []string{fmt.Sprintf("%s · %s · %s 발생 · %s", levelText(a.Level), kindText(a.Kind), clock(a.TS, s.d.Loc), state)},
 			AlertID: a.ID, Alert: &ac, Host: a.Host})
 		return id
 	}
@@ -672,7 +672,7 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 		if top.Host != "" {
 			where = " · " + top.Host
 		}
-		lines = append(lines, Line{Text: fmt.Sprintf("%s: %s%s%s", gr.title, strings.Join(msgs, ", "), more, where), Level: top.Level, Refs: ids})
+		lines = append(lines, Line{Text: fmt.Sprintf("%s: %s%s%s · %s 경과", gr.title, strings.Join(msgs, ", "), more, where, span(now-top.TS)), Level: top.Level, Refs: ids})
 	}
 	// 최근 해소된 업무 알림(지금 업무 알림이 없을 때만)
 	if len(groups) == 0 && len(gone) > 0 {
@@ -681,7 +681,7 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 			ids = append(ids, addAlert(a))
 		}
 		a := gone[0]
-		lines = append(lines, Line{Text: fmt.Sprintf("최근 10분 해소: %s (%s, %s 동안)%s", alertShort(a), clock(a.ResolvedAt, s.d.Loc), span(a.ResolvedAt-a.TS),
+		lines = append(lines, Line{Text: fmt.Sprintf("최근 10분 해소: %s (%s, %s 지속)%s", alertShort(a), clock(a.ResolvedAt, s.d.Loc), span(a.ResolvedAt-a.TS),
 			map[bool]string{true: fmt.Sprintf(" 외 %d건", len(gone)-1), false: ""}[len(gone) > 1]), Level: "", Refs: ids})
 		sig = append(sig, fmt.Sprintf("g:%s", a.DedupKey))
 	}
@@ -700,19 +700,8 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 				add(x)
 			}
 		}
-		text := ""
-		switch {
-		case tb.State == "collecting":
-			text = fmt.Sprintf("원인 추적 중: %s의 알림 구간 함수 표본을 모으는 중", tr.subject())
-		case tb.Top != nil && tb.Compared && tb.Top.Diff >= 3:
-			text = fmt.Sprintf("%s 원인 후보 %s: Self 비중 %s → %s(%s)", tr.subject(), tb.Top.Leaf, pct(tb.Top.PctA), pct(tb.Top.PctB), pp(tb.Top.Diff))
-			if tb.Metric != "" {
-				text += ", 같은 시각 " + tb.Metric
-			}
-		default:
-			text = tb.Diag.Title
-		}
-		lines = append(lines, Line{Text: text, Level: tb.Level, Refs: []string{id}})
+		// 원인 줄은 규칙 판단의 결론 한 줄이다. 점유율·콜스택·지표 값은 옆 원인 추적 칸에 보이므로 옮겨 적지 않는다.
+		lines = append(lines, Line{Text: tr.Rule.Title, Level: tb.Level, Refs: []string{id}})
 		top := ""
 		if tb.Top != nil {
 			top = tb.Top.Leaf
@@ -728,8 +717,8 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 			}
 			id := fmt.Sprintf("incident:%d", in.ID)
 			add(Evidence{ID: id, Kind: "incident", Label: "장애", Title: "진행 중 장애: " + in.Title,
-				Lines: []string{fmt.Sprintf("%s 시작 · %s째 · 범위 %s", clock(in.Start, s.d.Loc), span(now-in.Start), orDash(in.Scope))}})
-			lines = append(lines, Line{Text: fmt.Sprintf("진행 중 장애: %s (%s째)", in.Title, span(now-in.Start)), Level: "crit", Refs: []string{id}})
+				Lines: []string{fmt.Sprintf("%s 시작 · %s 경과 · 범위 %s", clock(in.Start, s.d.Loc), span(now-in.Start), orDash(in.Scope))}})
+			lines = append(lines, Line{Text: fmt.Sprintf("진행 중 장애: %s (%s 경과)", in.Title, span(now-in.Start)), Level: "crit", Refs: []string{id}})
 			sig = append(sig, id)
 			b.Level = "crit"
 		}
@@ -868,15 +857,15 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 	}
 	b.Lines = lines
 
-	// 확인할 것: 추적 → 위험 요인 → 실패 배치
+	// 점검 항목: 추적 → 위험 요인 → 실패 배치
 	if tb != nil {
 		for _, c := range tb.Diag.NextChecks {
-			if len(b.NextChecks) < 2 {
+			if len(b.NextChecks) < maxBriefChecks {
 				b.NextChecks = append(b.NextChecks, c)
 			}
 		}
 	}
-	if riskCheck != "" && len(b.NextChecks) < 3 {
+	if riskCheck != "" && len(b.NextChecks) < maxBriefChecks {
 		b.NextChecks = append(b.NextChecks, riskCheck)
 	}
 	if len(b.NextChecks) == 0 && len(hostAlerts) > 0 {
@@ -912,7 +901,7 @@ func headline(live, gone []model.Alert, nHosts int) string {
 	case warn > 0:
 		return fmt.Sprintf("경고 %d건 — %s", warn, alertShort(live[0]))
 	case len(gone) > 0:
-		return fmt.Sprintf("지금은 정상 — 10분 안에 업무 알림 %d건이 열렸다 풀림", len(gone))
+		return fmt.Sprintf("현재 정상 — 최근 10분 업무 알림 %d건 발생 후 해소", len(gone))
 	}
 	return fmt.Sprintf("전체 정상 — 서버 %d대 · 진행 중 알림 없음", nHosts)
 }

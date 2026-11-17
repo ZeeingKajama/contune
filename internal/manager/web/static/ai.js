@@ -67,7 +67,7 @@ export function aiBadge(by, ai) {
   }
 }
 
-export const CONF_TEXT = { high: '확신 높음', medium: '확신 보통', low: '확신 낮음' };
+export const CONF_TEXT = { high: '신뢰도 높음', medium: '신뢰도 보통', low: '신뢰도 낮음' };
 const pctText = (v) => `${(Number(v) || 0).toFixed(1)}%`;
 const ppText = (v) => `${v >= 0 ? '+' : ''}${(Number(v) || 0).toFixed(1)}%p`;
 
@@ -150,7 +150,7 @@ export function renderBrief(slot, b, ctx = {}) {
   const head = el('p', { class: `ai-head lv-${lv}`, text: b.headline || DASH });
   const lines = (b.lines || []).map((l) => el('li', { class: l.level ? `lv-${l.level}` : '' },
     el('span', { class: 'ai-t', text: l.text }), chips(l.refs, ev, tctx)));
-  const next = (b.next_checks || []).length ? el('div', { class: 'ai-next' }, el('b', { text: '확인할 것' }),
+  const next = (b.next_checks || []).length ? el('div', { class: 'ai-next' }, el('b', { text: '점검 항목' }),
     el('ol', {}, ...b.next_checks.map((c) => el('li', { text: c })))) : null;
   const main = el('div', { class: 'ai-main' }, head, el('ul', { class: 'ai-lines' }, ...lines), next);
   const side = b.trace ? traceCard(b.trace, ctx) : null;
@@ -178,9 +178,9 @@ function traceCard(t, ctx) {
     el('span', { class: `at-step lv-${t.level || 'warn'}`, text: '알림' }), el('i', { text: '›' }),
     el('span', { class: 'at-step', text: who || DASH }), el('i', { text: '›' }),
     el('span', { class: 'at-step', text: t.compared ? 'A·B 구간' : 'B 구간' }), el('i', { text: '›' }),
-    el('span', { class: 'at-step fn', text: t.top ? t.top.leaf : t.state === 'collecting' ? '표본 모으는 중' : '함수' })));
+    el('span', { class: 'at-step fn', text: t.top ? t.top.leaf : t.state === 'collecting' ? '샘플 수집 중' : '함수' })));
   if (t.state === 'collecting') {
-    kids.push(el('p', { class: 'at-wait', text: '알림 구간(B)의 함수 표본을 모으는 중 · 알림 뒤 50초 안에 끝남' }));
+    kids.push(el('p', { class: 'at-wait', text: 'B 구간 프로파일 샘플 수집 중 · 알림 후 50초 내 완료' }));
   } else if (t.top) {
     const a = t.compared ? t.top.pct_a : 0, b = t.top.pct_b;
     kids.push(el('div', { class: 'at-fn' },
@@ -189,11 +189,10 @@ function traceCard(t, ctx) {
         el('i', { class: 'a', style: `width:${Math.min(100, a).toFixed(1)}%` }), el('i', { class: 'b', style: `width:${Math.min(100, b).toFixed(1)}%` })),
       el('span', { class: 'at-v num', text: t.compared ? `${pctText(a)} → ${pctText(b)}` : `B ${pctText(b)}` }),
       t.compared ? el('b', { class: 'at-d num', text: ppText(t.top.diff) }) : null));
-    if ((t.path || []).length > 1) kids.push(el('div', { class: 'at-path', title: '호출 경로(알림 구간에서 가장 많은 스택)' }, ...pathEls(t.path)));
-    if (t.metric) kids.push(el('div', { class: 'at-metric', text: `같은 시각 ${t.metric}` }));
+    if ((t.path || []).length > 1) kids.push(el('div', { class: 'at-path', title: '콜스택(B 구간 최빈 스택)' }, ...pathEls(t.path)));
+    if (t.metric) kids.push(el('div', { class: 'at-metric', text: `동시간대 ${t.metric}` }));
   }
-  const d = t.diag || {};
-  if (d.title) kids.push(el('div', { class: 'at-diag' }, badgeEl(d.by, t.ai), el('span', { class: 'at-dt', text: d.title, title: d.detail || '' })));
+  // 결론 문장은 왼쪽 브리핑 줄(원인 줄)에 한 번만 쓴다. 이 칸은 측정값(점유율·콜스택·지표)만 보인다.
   kids.push(el('div', { class: 'at-act' },
     href ? el('a', { class: 'ai-btn primary', href, text: '타임머신에서 A·B 비교 →' }) : null,
     el('button', { type: 'button', class: 'ai-btn', text: '추적 단계 보기', onclick: () => ctx.onTrace && ctx.onTrace(t.alert_id) })));
@@ -245,30 +244,30 @@ export function traceView(t, ctx = {}) {
   const a = t.alert || {};
   const href = traceHash(t);
   const box = el('div', { class: 'at-view' });
-  const status = t.state === 'collecting' ? '표본 모으는 중' : t.final ? '추적 끝' : '계산 중';
+  const status = t.state === 'collecting' ? '샘플 수집 중' : t.final ? '분석 완료' : '계산 중';
   box.append(el('div', { class: 'at-top' }, badgeEl(t.diag && t.diag.by, t.ai), el('span', { class: 'grow' }),
     el('span', { class: 'ai-at', text: `${status} · ${fmtClock(t.at)}` })));
 
   const steps = [];
   steps.push(step(1, '알림',
     el('div', { class: 'ts-line' }, el('span', { class: `badge ${esc(a.level)}`, text: LEVEL_TEXT[a.level] || a.level || DASH }), ' ', a.message || DASH),
-    el('div', { class: 'ts-sub', text: `${fmtClock(a.ts)} 열림${a.state === 'resolved' ? ` · ${fmtClock(a.resolved_at)} 해소` : ' · 진행 중'}` })));
+    el('div', { class: 'ts-sub', text: `${fmtClock(a.ts)} 발생${a.state === 'resolved' ? ` · ${fmtClock(a.resolved_at)} 해소` : ' · 진행 중'}` })));
   if (t.state === 'exit' || t.state === 'no_owner' || t.state === 'down') { // 함수 비교를 하지 않는 추적: 구간·표 대신 갈 곳만
-    steps.push(step(2, '따라갈 곳', el('div', { class: 'ts-line', text: t.note || DASH }),
+    steps.push(step(2, '분석 경로', el('div', { class: 'ts-line', text: t.note || DASH }),
       t.state === 'exit' && a.dedup_key ? el('a', { href: `#exit/${enc(String(a.dedup_key).replace(/^exit:/, ''))}`, onclick: closeDrawer, text: '종료 보고서 →' }) : null));
   } else {
     const who = [t.service_title || t.service, t.host].filter(Boolean).join(' · ') || t.owner;
-    steps.push(step(2, '주인 찾기', el('div', { class: 'ts-line' }, el('b', { text: who })),
-      el('div', { class: 'ts-sub', text: `${t.found || ''} · ${t.owner || ''}` })));
-    steps.push(step(3, '구간 나누기',
+    steps.push(step(2, '대상 식별', el('div', { class: 'ts-line' }, el('b', { text: who })),
+      el('div', { class: 'ts-sub', text: [t.owner, t.found].filter(Boolean).join(' · ') })));
+    steps.push(step(3, '비교 구간',
       el('div', { class: 'ts-ab' },
-        el('span', { class: 'tm-chip a set' }, el('b', { text: 'A' }), el('span', { class: 'cn', text: '평소' }),
-          el('span', { class: 'cv num', text: t.a && t.a.samples ? `${fmtClock(t.a.from)}–${fmtClock(t.a.to)} · 표본 ${fmtNum(t.a.samples)}` : '표본 없음' })),
-        el('span', { class: 'tm-chip b set' }, el('b', { text: 'B' }), el('span', { class: 'cn', text: '알림 구간' }),
-          el('span', { class: 'cv num', text: `${fmtClock(t.b.from)}–${fmtClock(t.b.to)} · 표본 ${fmtNum(t.b.samples)}` }))),
-      el('div', { class: 'ts-sub', text: 'B = 알림 30초 전~30초 뒤, A = 알림 5분 전~90초 전(표본이 모자라면 B 바로 앞까지)' })));
+        el('span', { class: 'tm-chip a set' }, el('b', { text: 'A' }), el('span', { class: 'cn', text: '기준' }),
+          el('span', { class: 'cv num', text: t.a && t.a.samples ? `${fmtClock(t.a.from)}–${fmtClock(t.a.to)} · 샘플 ${fmtNum(t.a.samples)}` : '샘플 없음' })),
+        el('span', { class: 'tm-chip b set' }, el('b', { text: 'B' }), el('span', { class: 'cn', text: '이상' }),
+          el('span', { class: 'cv num', text: `${fmtClock(t.b.from)}–${fmtClock(t.b.to)} · 샘플 ${fmtNum(t.b.samples)}` }))),
+      el('div', { class: 'ts-sub', text: 'A 알림 −5분~−90초 · B 알림 ±30초', title: 'A 구간 샘플이 부족하면 B 직전까지 넓힌다' })));
     if (t.state === 'collecting' || t.state === 'no_profile') {
-      steps.push(step(4, '함수 비교', el('div', { class: 'ts-line', text: t.note || DASH })));
+      steps.push(step(4, '프로파일 비교', el('div', { class: 'ts-line', text: t.note || DASH })));
     } else {
       const max = Math.max(1, ...(t.functions || []).map((r) => Math.abs(r.diff)));
       const rows = (t.functions || []).map((r) => el('tr', { class: t.top && r.leaf === t.top.leaf ? 'on' : '' },
@@ -276,11 +275,11 @@ export function traceView(t, ctx = {}) {
         el('td', { class: 'num', text: t.compared ? pctText(r.pct_a) : DASH }), el('td', { class: 'num', text: pctText(r.pct_b) }),
         el('td', { class: `num ${r.diff > 0 ? 'up' : 'down'}`, text: t.compared ? ppText(r.diff) : DASH }),
         el('td', {}, el('span', { class: `tm-cbar ${r.diff > 0 ? 'up' : 'down'}`, style: `width:${Math.round((Math.abs(r.diff) / max) * 100)}%` }))));
-      steps.push(step(4, '함수 비교(Self 비중)',
+      steps.push(step(4, '프로파일 비교(Self CPU 점유율)',
         el('table', { class: 'tm-cmp-t at-tbl' }, el('thead', {}, el('tr', {}, ...['함수', 'A', 'B', '변화', ''].map((h) => el('th', { text: h })))), el('tbody', {}, ...rows))));
       if ((t.path || []).length) {
-        steps.push(step(5, '호출 경로 따라가기', el('div', { class: 'at-path big' }, ...pathEls(t.path)),
-          el('div', { class: 'ts-sub', text: `알림 구간에서 ${t.top ? t.top.leaf : ''}에 이른 가장 많은 스택 · B 표본의 ${pctText(t.path_pct)}` })));
+        steps.push(step(5, '콜스택', el('div', { class: 'at-path big' }, ...pathEls(t.path)),
+          el('div', { class: 'ts-sub', text: `B 구간 최빈 스택 · 샘플의 ${pctText(t.path_pct)}` })));
       }
     }
     const facts = [];
@@ -290,22 +289,22 @@ export function traceView(t, ctx = {}) {
     }
     if (t.log_count) facts.push(el('li', {}, el('b', { text: `오류·경고 로그 ${fmtNum(t.log_count)}건` }), ' ', (t.logs[0] && t.logs[0].message) || ''));
     for (const x of t.audit || []) facts.push(el('li', {}, el('b', { text: '운영자 조작' }), ` ${fmtClock(x.ts)} ${String(x.actor || '').replace(/^user:/, '')} ${x.action} ${x.target}`));
-    if (facts.length) steps.push(step(steps.length + 1, '같은 시각 근거', el('ul', { class: 'ts-facts' }, ...facts)));
+    if (facts.length) steps.push(step(steps.length + 1, '동시간대 지표·로그', el('ul', { class: 'ts-facts' }, ...facts)));
   }
   box.append(el('ol', { class: 'at-steps' }, ...steps));
 
-  // 판단(AI 초안 또는 규칙)
+  // 분석(AI 초안 또는 규칙)
   const dg = t.diag || {};
   const judge = el('section', { class: `at-judge ${dg.by === 'llm' ? 'llm' : 'rule'}` },
-    el('div', { class: 'aj-h' }, el('span', { class: 'ai-mark', text: AI_MARK }), el('b', { text: dg.by === 'llm' ? 'AI 판단(초안)' : '규칙 판단' }),
+    el('div', { class: 'aj-h' }, el('span', { class: 'ai-mark', text: AI_MARK }), el('b', { text: dg.by === 'llm' ? 'AI 분석' : '규칙 기반 분석' }),
       dg.confidence ? el('span', { class: `aj-conf ${dg.confidence}`, text: CONF_TEXT[dg.confidence] || dg.confidence }) : null,
       el('span', { class: 'grow' }), badgeEl(dg.by, t.ai)),
     el('p', { class: 'aj-t', text: dg.title || DASH }),
     dg.detail ? el('p', { class: 'aj-d', text: dg.detail }) : null,
     (dg.evidence_ids || []).length ? el('div', { class: 'aj-ev' }, el('span', { class: 'aj-l', text: '근거' }), chips(dg.evidence_ids, ev, tctx)) : null,
-    (dg.next_checks || []).length ? el('div', { class: 'ai-next' }, el('b', { text: '확인할 것' }), el('ol', {}, ...dg.next_checks.map((c) => el('li', { text: c })))) : null);
+    (dg.next_checks || []).length ? el('div', { class: 'ai-next' }, el('b', { text: '점검 항목' }), el('ol', {}, ...dg.next_checks.map((c) => el('li', { text: c })))) : null);
   if (dg.by === 'llm' && t.rule) {
-    judge.append(el('details', { class: 'aj-rule' }, el('summary', { text: '같은 근거의 규칙 판단' }),
+    judge.append(el('details', { class: 'aj-rule' }, el('summary', { text: '같은 근거의 규칙 기반 분석' }),
       el('p', { class: 'aj-t', text: t.rule.title }), el('p', { class: 'aj-d', text: t.rule.detail || '' })));
   }
   if (t.ai && t.ai.state === 'error') judge.append(el('p', { class: 'aj-err', text: `AI 답을 쓰지 못함: ${t.ai.error || ''}` }));

@@ -143,7 +143,7 @@ function heldRow(f, now, act) {
 }
 
 function checkBox(risk, stats, ctx, act, formFeature) {
-  const box = el('section', { class: 'rbox rcheck' }, el('h2', { class: 'sec', text: '확인할 것' }));
+  const box = el('section', { class: 'rbox rcheck' }, el('h2', { class: 'sec', text: '점검 항목' }));
   if (!risk) { box.append(el('p', { class: 'empty', text: DASH })); return box; }
   const now = risk.now || Date.now();
   const { open, held } = checkRows(risk);

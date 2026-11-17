@@ -136,7 +136,7 @@ type owner struct {
 // resolve는 알림에서 따라갈 주인을 찾는다. 못 찾으면 state(no_owner | exit)와 까닭.
 func (s *Service) resolve(ctx context.Context, a model.Alert) (owner, string, string) {
 	if a.Kind == "exit" {
-		return owner{}, "exit", "종료 알림은 종료 보고서가 원인(신호·스택·커널 기록)을 따로 가립니다"
+		return owner{}, "exit", "종료 알림 — 원인은 종료 보고서(신호·콜스택·커널 로그)에서 분석"
 	}
 	items := s.services(ctx)
 	title := func(id string) string {
@@ -148,14 +148,14 @@ func (s *Service) resolve(ctx context.Context, a model.Alert) (owner, string, st
 		return id
 	}
 	if svc, host, ok := model.ParseServiceOwner(a.ExecID); ok && a.Kind != "service" {
-		return owner{a.ExecID, svc, title(svc), host, "알림의 주인 키"}, "", ""
+		return owner{a.ExecID, svc, title(svc), host, "알림의 프로세스 키"}, "", ""
 	}
 	switch a.Kind {
 	case "service":
 		// 서비스 알림은 "떠 있어야 할 프로세스가 없다"는 뜻이라 함수 표본을 비교할 것이 없다. 주인만 알려 기동·종료 기록으로 보낸다.
 		if a.Name != "" && a.Host != "" {
 			return owner{model.ServiceOwner(a.Name, a.Host), a.Name, title(a.Name), a.Host, "서비스 알림"}, "down",
-				"서비스가 떠 있지 않다는 알림이라 함수 비교 대신 기동·종료 기록(종료 보고서)을 봅니다"
+				"서비스 미기동 알림 — 프로파일 비교 대상 없음, 기동·종료 이력(종료 보고서) 확인"
 		}
 	case "tile":
 		if p, ok := s.tilePanel(a); ok && p.Service != "" {
@@ -167,14 +167,14 @@ func (s *Service) resolve(ctx context.Context, a model.Alert) (owner, string, st
 				return owner{model.ServiceOwner(p.Service, host), p.Service, title(p.Service), host,
 					fmt.Sprintf("업무 패널 '%s'의 서비스", p.Title)}, "", ""
 			}
-			return owner{}, "no_owner", fmt.Sprintf("업무 패널 '%s'의 서비스 %s가 도는 서버가 없습니다", p.Title, p.Service)
+			return owner{}, "no_owner", fmt.Sprintf("업무 패널 '%s'의 서비스 %s 가동 서버 없음", p.Title, p.Service)
 		}
 	case "host":
 		if o, ok := onHost(items, a.Host); ok {
-			o.found = "이 서버에서 도는 서비스"
+			o.found = "해당 서버의 서비스"
 			return o, "", ""
 		}
-		return owner{}, "no_owner", a.Host + " 서버에서 도는 서비스가 없습니다(함수 추적 대상 없음)"
+		return owner{}, "no_owner", a.Host + " 서버에 프로파일 대상 서비스 없음"
 	case "risk":
 		if sc, _, ok := s.risk(); ok {
 			for _, f := range notable(sc.Factors) {
@@ -183,18 +183,18 @@ func (s *Service) resolve(ctx context.Context, a model.Alert) (owner, string, st
 						continue
 					}
 					if o, ok := onHost(items, p.ID); ok {
-						o.found = fmt.Sprintf("위험 요인 '%s'이 나온 서버", f.Title)
+						o.found = fmt.Sprintf("위험 요인 '%s' 발생 서버", f.Title)
 						return o, "", ""
 					}
 				}
 			}
 		}
-		return owner{}, "no_owner", "위험 요인이 나온 서버에 함수 추적 서비스가 없습니다"
+		return owner{}, "no_owner", "위험 요인 발생 서버에 프로파일 대상 서비스 없음"
 	}
 	if a.ExecID != "" { // 실행(스텝 프로세스)이 주인
 		return owner{key: a.ExecID, host: a.Host, found: "알림의 실행"}, "", ""
 	}
-	return owner{}, "no_owner", "알림에 따라갈 서비스·실행이 없습니다"
+	return owner{}, "no_owner", "알림에 연결된 서비스·실행 없음"
 }
 
 // tilePanel은 타일 알림의 패널이다(DedupKey "tile:<패널>/<타일 제목>").
@@ -274,7 +274,7 @@ func (s *Service) compute(ctx context.Context, a model.Alert, now int64) Trace {
 	o, state, note := s.resolve(ctx, a)
 	ac := a
 	t.Evidence = append(t.Evidence, Evidence{ID: "alert", Kind: "alert", Label: "알림", Title: a.Message,
-		Lines:   []string{fmt.Sprintf("%s · %s · %s 열림", levelText(a.Level), kindText(a.Kind), clock(a.TS, s.d.Loc))},
+		Lines:   []string{fmt.Sprintf("%s · %s · %s 발생", levelText(a.Level), kindText(a.Kind), clock(a.TS, s.d.Loc))},
 		AlertID: a.ID, Alert: &ac, Host: a.Host})
 	if state != "" {
 		t.State, t.Note, t.Final = state, note, true
@@ -284,8 +284,8 @@ func (s *Service) compute(ctx context.Context, a model.Alert, now int64) Trace {
 	}
 	t.Owner, t.Service, t.ServiceTitle, t.Host, t.Found = o.key, o.service, o.title, o.host, o.found
 	who := t.subject()
-	t.Evidence = append(t.Evidence, Evidence{ID: "owner", Kind: "owner", Label: who, Title: "따라간 주인: " + who,
-		Lines: []string{"찾은 길: " + o.found, "주인 키: " + o.key}, Host: o.host, Service: o.service, ExecID: execOnly(o.key)})
+	t.Evidence = append(t.Evidence, Evidence{ID: "owner", Kind: "owner", Label: who, Title: "대상 프로세스: " + who,
+		Lines: []string{"식별 경로: " + o.found, "프로세스 키: " + o.key}, Host: o.host, Service: o.service, ExecID: execOnly(o.key)})
 
 	T := a.TS
 	t.B = Window{From: T - bBefore, To: min(T+bAfter, now)}
@@ -309,17 +309,17 @@ func (s *Service) compute(ctx context.Context, a model.Alert, now int64) Trace {
 	s.logs(ctx, &t)
 	s.audit(ctx, &t)
 	t.Evidence = append(t.Evidence, Evidence{ID: "window", Kind: "window", Label: "구간",
-		Title: fmt.Sprintf("A(평소) %s–%s · B(알림 구간) %s–%s", clock(t.A.From, s.d.Loc), clock(t.A.To, s.d.Loc), clock(t.B.From, s.d.Loc), clock(t.B.To, s.d.Loc)),
-		Lines: []string{fmt.Sprintf("A 함수 표본 %s개 · B 함수 표본 %s개", num(float64(t.A.Samples)), num(float64(t.B.Samples))),
-			"B = 알림 30초 전~30초 뒤, A = 알림 5분 전~90초 전(표본이 모자라면 B 바로 앞까지)"}})
+		Title: fmt.Sprintf("A(기준 구간) %s–%s · B(이상 구간) %s–%s", clock(t.A.From, s.d.Loc), clock(t.A.To, s.d.Loc), clock(t.B.From, s.d.Loc), clock(t.B.To, s.d.Loc)),
+		Lines: []string{fmt.Sprintf("A 프로파일 샘플 %s개 · B 프로파일 샘플 %s개", num(float64(t.A.Samples)), num(float64(t.B.Samples))),
+			"A 알림 −5분~−90초(샘플 부족 시 B 직전까지) · B 알림 ±30초"}})
 
 	switch {
 	case t.B.Samples < minB && !t.Final:
 		t.State = "collecting"
-		t.Note = fmt.Sprintf("B 구간 함수 표본을 모으는 중(%s개)", num(float64(t.B.Samples)))
+		t.Note = fmt.Sprintf("B 구간 프로파일 샘플 수집 중(%s개)", num(float64(t.B.Samples)))
 	case t.B.Samples < minB:
 		t.State = "no_profile"
-		t.Note = "B 구간에 함수 표본이 없습니다(함수 추적이 꺼진 서비스이거나 프로파일러가 없는 서버)"
+		t.Note = "B 구간 프로파일 샘플 없음(프로파일 미설정 서비스 또는 프로파일러 없는 서버)"
 	default:
 		t.State = "ok"
 		t.Compared = t.A.Samples >= minA/2
@@ -393,9 +393,9 @@ func (s *Service) functions(t *Trace, pa, pb model.Profile) {
 	}
 	t.Functions = rows
 	for _, r := range rows {
-		line := fmt.Sprintf("Self 비중 A %s → B %s (%s)", pct(r.PctA), pct(r.PctB), pp(r.Diff))
+		line := fmt.Sprintf("Self CPU 점유율 A %s → B %s (%s)", pct(r.PctA), pct(r.PctB), pp(r.Diff))
 		if !t.Compared {
-			line = "Self 비중 B " + pct(r.PctB) + " (A 표본 없음)"
+			line = "Self CPU 점유율 B " + pct(r.PctB) + " (A 샘플 없음)"
 		}
 		t.Evidence = append(t.Evidence, Evidence{ID: "fn:" + r.Leaf, Kind: "fn", Label: r.Leaf, Title: "함수 " + r.Leaf, Lines: []string{line}})
 	}
@@ -414,8 +414,8 @@ func (s *Service) functions(t *Trace, pa, pb model.Profile) {
 		if t.B.Samples > 0 {
 			t.PathPct = 100 * float64(bestN) / float64(t.B.Samples)
 		}
-		t.Evidence = append(t.Evidence, Evidence{ID: "path", Kind: "path", Label: "호출 경로", Title: "호출 경로(B에서 가장 많은 스택)",
-			Lines: []string{strings.Join(t.Path, " › "), "B 표본의 " + pct(t.PathPct)}})
+		t.Evidence = append(t.Evidence, Evidence{ID: "path", Kind: "path", Label: "콜스택", Title: "콜스택(B 구간 최빈 스택)",
+			Lines: []string{strings.Join(t.Path, " › "), "B 샘플의 " + pct(t.PathPct)}})
 	}
 }
 
@@ -614,6 +614,7 @@ func (s *Service) audit(ctx context.Context, t *Trace) {
 }
 
 // traceRule은 근거만 보고 쓰는 규칙 판단이다(같은 입력이면 같은 답).
+// 제목은 결론 한 줄, detail은 판단에 쓴 수치만 " · "로 이은 한 줄이다(구간·콜스택은 추적 단계에 보이므로 다시 쓰지 않는다).
 func (s *Service) traceRule(t *Trace) Diagnosis {
 	d := Diagnosis{By: "rule", Confidence: "low", EvidenceIDs: []string{"alert"}, At: t.At}
 	cite := func(ids ...string) { d.EvidenceIDs = append(d.EvidenceIDs, ids...) }
@@ -622,59 +623,62 @@ func (s *Service) traceRule(t *Trace) Diagnosis {
 	who := t.subject()
 	switch t.State {
 	case "exit", "no_owner", "down":
-		d.Title = t.Note
-		d.Detail = t.Note
+		d.Title = t.Note // 까닭은 추적 단계 2(분석 경로)에 같은 말로 보인다
 		switch t.State {
 		case "exit":
-			d.NextChecks = []string{"종료 보고서에서 신호·호출 스택·커널 기록 확인"}
+			d.NextChecks = []string{"종료 보고서에서 신호·콜스택·커널 로그 확인"}
 		case "down":
-			d.Title = who + ": 서비스 미기동 — 기동·종료 기록 확인"
-			d.NextChecks = []string{"서비스 타임머신 사건 탭에서 마지막 종료 보고서와 기동한 실행 확인", "기동 배치(플로우)가 실패·대기 중인지 확인"}
+			d.Title = who + ": 서비스 미기동 — 기동·종료 이력 확인"
+			d.NextChecks = []string{"서비스 타임머신 사건 탭에서 마지막 종료 보고서·기동 실행 확인", "기동 배치(플로우) 실패·대기 여부 확인"}
 		}
 		return d
 	case "collecting":
-		d.Title = "원인 추적 중: " + t.Note
-		say("%s의 알림 구간(B) 함수 표본이 아직 모자랍니다. 프로파일은 10초 창으로 오므로 잠시 뒤 다시 계산합니다.", who)
+		d.Title = "원인 추적 중 — " + t.Note
+		d.Detail = "프로파일은 10초 주기 수집 — 샘플이 차면 자동 재계산"
 		cite("owner", "window")
-		d.Detail = strings.Join(detail, " ")
 		return d
 	}
 	cite("owner", "window")
 	ms := t.metricSentence(2)
-	if t.State == "no_profile" {
-		d.Title = who + ": 함수 표본 없음 — 지표만 비교"
-		say("%s의 B 구간에 함수 표본이 없어 함수까지는 따라가지 못했습니다.", who)
-		if ms != "" {
-			say("같은 구간 %s.", ms)
-			for _, m := range t.Metrics[:min(2, len(t.Metrics))] {
-				cite("metric:" + m.Name)
-			}
+	citeMetrics := func() {
+		if ms == "" {
+			return
 		}
-		d.NextChecks = append(d.NextChecks, "서비스 정의에 profile: true가 있는지, 그 서버 에이전트의 프로파일러가 켜져 있는지 확인")
-		d.Detail = strings.Join(detail, " ")
+		say("동시간대 %s", ms)
+		for _, m := range t.Metrics[:min(2, len(t.Metrics))] {
+			cite("metric:" + m.Name)
+		}
+	}
+	if t.State == "no_profile" {
+		d.Title = who + ": 프로파일 샘플 없음 — 지표만 비교"
+		citeMetrics()
+		d.NextChecks = append(d.NextChecks, "서비스 정의 profile: true와 해당 서버 에이전트 프로파일러 가동 확인")
+		d.Detail = strings.Join(detail, " · ")
 		return d
 	}
 	top := t.Top
 	switch {
 	case top == nil:
-		d.Title = who + ": 함수 비중 변화 없음 — CPU 밖 원인(대기·I/O·외부 호출) 의심"
-		say("%s의 함수 비중이 A와 B에서 거의 같습니다.", who)
+		d.Title = who + ": 점유율 변화 없음 — CPU 외 원인(대기·I/O·외부 호출) 의심"
+		say("A·B 함수별 Self CPU 점유율 동일 수준")
 	case !t.Compared:
-		d.Title = fmt.Sprintf("B 구간 최다 함수: %s (Self 비중 %s)", top.Leaf, pct(top.PctB))
-		say("A(평소) 구간에 함수 표본이 없어 B 구간만 봤습니다. %s가 B 표본의 %s를 차지했습니다.", top.Leaf, pct(top.PctB))
+		d.Title = fmt.Sprintf("B 구간 핫스팟: %s (Self CPU 점유율 %s)", top.Leaf, pct(top.PctB))
+		say("A 구간 샘플 없음 — B 구간만 분석")
 		cite("fn:" + top.Leaf)
 	case top.Diff < 3:
-		d.Title = who + ": 함수 비중 변화 작음 — CPU 밖 원인(대기·I/O·외부 호출) 의심"
-		say("가장 늘어난 함수 %s도 Self 비중이 %s 바뀌는 데 그쳤습니다.", top.Leaf, pp(top.Diff))
+		d.Title = who + ": 점유율 변화 작음 — CPU 외 원인(대기·I/O·외부 호출) 의심"
+		say("최대 증가 함수 %s도 %s", top.Leaf, pp(top.Diff))
 		cite("fn:" + top.Leaf)
 	default:
-		d.Title = fmt.Sprintf("원인 후보: %s (Self 비중 %s → %s)", top.Leaf, pct(top.PctA), pct(top.PctB))
-		say("%s의 함수 표본을 A(평소 %s–%s, %s개)와 B(알림 구간 %s–%s, %s개)로 나눠 비교했습니다.", who,
-			clock(t.A.From, s.d.Loc), clock(t.A.To, s.d.Loc), num(float64(t.A.Samples)), clock(t.B.From, s.d.Loc), clock(t.B.To, s.d.Loc), num(float64(t.B.Samples)))
-		say("%s의 Self 비중이 %s에서 %s로 %s 바뀌어 가장 크게 늘었습니다.", top.Leaf, pct(top.PctA), pct(top.PctB), pp(top.Diff))
+		d.Title = fmt.Sprintf("원인 후보 %s — 점유율 %s", top.Leaf, pp(top.Diff))
+		if m, ok := t.risingTraffic(); ok {
+			if r, ok := ratio(*m.A, m.B); ok {
+				d.Title = fmt.Sprintf("원인 후보 %s — %s %s", top.Leaf, m.Title, r)
+			}
+		}
+		say("Self CPU 점유율 %s → %s(%s)", pct(top.PctA), pct(top.PctB), pp(top.Diff))
 		cite("fn:" + top.Leaf)
 		if len(t.Path) > 1 {
-			say("호출 경로는 %s입니다.", strings.Join(t.Path, " › "))
 			cite("path")
 		}
 		switch {
@@ -684,38 +688,37 @@ func (s *Service) traceRule(t *Trace) Diagnosis {
 			d.Confidence = "medium"
 		}
 	}
-	if ms != "" {
-		say("같은 구간 %s.", ms)
-		for _, m := range t.Metrics[:min(2, len(t.Metrics))] {
-			cite("metric:" + m.Name)
-		}
-	}
+	citeMetrics()
 	if t.LogCount > 0 {
-		say("B 구간 오류·경고 로그가 %d건 있습니다(최근: %s).", t.LogCount, cut(t.Logs[0].Message, 60))
+		say("오류·경고 로그 %d건(최근: %s)", t.LogCount, cut(t.Logs[0].Message, 40))
 		cite("logs")
 	}
-	// 확인할 것
+	// 점검 항목
 	if top != nil && t.Compared && top.Diff >= 3 {
-		d.NextChecks = append(d.NextChecks, fmt.Sprintf("타임머신 B 구간 플레임 그래프에서 %s를 부른 경로 확인", top.Leaf))
+		d.NextChecks = append(d.NextChecks, fmt.Sprintf("타임머신 B 구간 플레임 그래프에서 %s 콜스택 확인", top.Leaf))
 		if m, ok := t.risingTraffic(); ok {
-			d.NextChecks = append(d.NextChecks, fmt.Sprintf("%s 증가(평소 %s → 최대 %s)가 정상 거래인지, 비정상 호출·재시도인지 확인", m.Title, num(*m.A), withUnit(m.Peak, m.Unit)))
+			d.NextChecks = append(d.NextChecks, fmt.Sprintf("%s 급증 출처 확인(정상 거래 / 재시도·비정상 호출)", m.Title))
 		}
-		d.NextChecks = append(d.NextChecks, fmt.Sprintf("%s 코드에서 입력 크기에 비례하는 반복·탐색·잠금 대기가 있는지 확인", top.Leaf))
+		d.NextChecks = append(d.NextChecks, fmt.Sprintf("%s의 입력 크기 비례 연산(반복·탐색)·락 경합 확인", top.Leaf))
 	} else {
-		d.NextChecks = append(d.NextChecks, "같은 시각 서버 CPU·디스크·네트워크와 외부 호출 대기 확인")
+		d.NextChecks = append(d.NextChecks, "동시간대 서버 CPU·디스크·네트워크, 외부 호출 대기 확인")
 	}
 	if t.LogCount > 0 {
-		d.NextChecks = append(d.NextChecks, "B 구간 오류 로그 확인: "+cut(t.Logs[0].Message, 60))
+		d.NextChecks = append(d.NextChecks, "B 구간 오류 로그 확인: "+cut(t.Logs[0].Message, 40))
 	}
 	if len(t.Audit) > 0 {
 		a := t.Audit[0]
-		d.NextChecks = append(d.NextChecks, fmt.Sprintf("같은 시각 운영자 조작(%s %s, %s) 영향 확인", a.Action, a.Target, clock(a.TS, s.d.Loc)))
+		d.NextChecks = append(d.NextChecks, fmt.Sprintf("동시간대 운영자 조작(%s %s, %s) 영향 확인", a.Action, a.Target, clock(a.TS, s.d.Loc)))
 		cite(fmt.Sprintf("audit:%d", a.ID))
 	}
-	if len(d.NextChecks) > 4 {
-		d.NextChecks = d.NextChecks[:4]
+	if len(d.NextChecks) > maxChecks {
+		d.NextChecks = d.NextChecks[:maxChecks]
 	}
-	d.Detail = strings.Join(detail, " ")
+	// 근거 칩은 결론을 가른 것만: 함수·콜스택·지표·로그가 있으면 알림·대상·구간(추적 단계 1~3에 보인다)은 뺀다.
+	if len(d.EvidenceIDs) > 3 {
+		d.EvidenceIDs = d.EvidenceIDs[3:]
+	}
+	d.Detail = strings.Join(detail, " · ")
 	return d
 }
 

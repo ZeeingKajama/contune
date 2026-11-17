@@ -549,7 +549,7 @@ export function eventList(alerts, panels, hs, flows) {
     row.innerHTML = `<span class="wm ${esc(a.level)}" title="${esc(LEVEL_TEXT[a.level] || a.level)}">${ALERT_MARK[a.level] || '•'}</span><span class="wt">${esc(alertName(a))}</span>` +
       `<span class="wr">${esc(alertReason(a))}</span>` +
       (ack ? `<span class="wa" title="${esc(ack.title)}">${esc(ack.text)}</span>` : '') +
-      (traceable(a) ? `<button type="button" class="wtr" title="이 알림에서 원인 함수까지 추적(서비스 → 구간 A·B → 함수 비교 → 호출 경로)">${AI_MARK} 원인</button>` : '') +
+      (traceable(a) ? `<button type="button" class="wtr" title="이 알림에서 원인 함수까지 추적(대상 식별 → 비교 구간 → 프로파일 비교 → 콜스택)">${AI_MARK} 원인</button>` : '') +
       `<span class="we">${esc(relTime(a.ts, now))}</span>`;
     const tb = row.querySelector('.wtr');
     if (tb) tb.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); openTrace(a.id, { alertHref: (x) => alertTarget(x, panels) }); });

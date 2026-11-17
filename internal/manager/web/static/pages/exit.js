@@ -24,7 +24,7 @@ export const CODE_TEXT = {
   SEGV_MAPERR: '없는 주소', SEGV_ACCERR: '권한 없는 접근', SI_USER: '다른 프로세스가 보냄(kill)',
   SI_TKILL: '스스로 보냄(abort·raise)', FPE_INTDIV: '0으로 나눔', BUS_ADRALN: '정렬 안 된 주소',
 };
-export const CONF_TEXT = { high: '확신 높음', medium: '확신 보통', low: '확신 낮음' };
+export const CONF_TEXT = { high: '신뢰도 높음', medium: '신뢰도 보통', low: '신뢰도 낮음' };
 // 근거 이름(근거 칩 · 직전 상황의 왼쪽 이름표). exit·core는 화면의 '종료 정보'·'호출 스택' 칸이 맡는다.
 export const EV_TEXT = {
   exit: '종료 정보', core: '호출 스택', output: '표준 출력', kernel: '커널 로그', job: '프로세스 지표', host: '서버 지표',
@@ -46,7 +46,7 @@ const HOW_FROM = { wait: 'wait4', core: 'core의 신호 정보', kmsg: '커널 �
 const FACT = {
   rss_first_mb: ['처음 RSS', 'MB'], rss_last_mb: ['마지막 RSS', 'MB'], rss_max_mb: ['최대 RSS', 'MB'], cpu_last_pct: ['마지막 CPU', '%'],
   span_s: ['구간', '초'], mem_used_pct_max: ['메모리 사용률 최대', '%'], cpu_pct_max: ['CPU 사용률 최대', '%'],
-  samples: ['표본', '개'], window_s: ['구간', '초'], crash_func_pct: ['죽은 함수 비중', '%'],
+  samples: ['샘플', '개'], window_s: ['구간', '초'], crash_func_pct: ['종료 함수 점유율', '%'],
   count: ['건수', '건'], nearest_before_s: ['가장 가까운 시작', '초 전'], kills: ['강제 종료·재실행', '건'],
   errors: ['(E)', '줄'], warns: ['(W)', '줄'], count_24h: ['24시간 종료', '건'],
 };
@@ -236,7 +236,7 @@ const labeled = (label, body) => el('div', { class: 'ex-lrow' }, el('span', { cl
 function verdict(dg) {
   return el('span', { class: 'ex-verdict' },
     CATEGORY_TEXT[dg.category] || dg.category || DASH, ' · ', dg.by === 'llm' ? 'LLM 참고 초안' : '규칙 판단', ' · ',
-    el('span', { class: `ex-conf ${esc(dg.confidence || '')}`, text: CONF_TEXT[dg.confidence] || dg.confidence || '확신 모름' }));
+    el('span', { class: `ex-conf ${esc(dg.confidence || '')}`, text: CONF_TEXT[dg.confidence] || dg.confidence || '신뢰도 미상' }));
 }
 // 진단 본문(규칙·LLM 같은 모양): 설명 · 근거 · 코드 근거 · 고칠 방향 · 확인할 것. 코드 근거·고칠 방향은 LLM 초안에만 온다.
 // refList(code_refs) → 요소(누르면 소스 카드로 가는 목록)
@@ -246,7 +246,7 @@ function diagBody(dg, have, refList) {
   if ((dg.evidence_ids || []).length) box.append(labeled('근거', evChips(dg.evidence_ids, have)));
   if ((dg.code_refs || []).length && refList) box.append(labeled('코드 근거', refList(dg.code_refs)));
   if (dg.fix) box.append(labeled('고칠 방향', el('p', { class: 'ex-fix', text: dg.fix })));
-  if ((dg.next_checks || []).length) box.append(labeled('확인할 것', el('ol', { class: 'ex-next' }, dg.next_checks.map((s) => el('li', { text: s })))));
+  if ((dg.next_checks || []).length) box.append(labeled('점검 항목', el('ol', { class: 'ex-next' }, dg.next_checks.map((s) => el('li', { text: s })))));
   return box;
 }
 
