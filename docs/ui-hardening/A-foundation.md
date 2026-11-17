@@ -12,7 +12,7 @@ B 묶음 9개가 이 계약에 기대어 동시에 일한다. **아래 이름·�
 |---|---|
 | `api()` | 응답이 5xx면 `setHealth(false)`(지금은 `r.ok` 전에 true로 침, :66). 4xx는 그대로 true |
 | `poll(fn, ms, opts)` | `opts.onError(e)`가 있으면 실패 때 부른다. 실패(상태 0 또는 5xx)가 2번 이어지면 그 poll을 '끊김'으로 센다. 성공하면 풀린다. 4xx는 끊김으로 안 센다 |
-| `onPollState(fn)` → 해제 함수 | 듣는 쪽에 `{failing, lastOk, fails}`를 준다. `failing`은 살아 있는 poll(화면 범위+전역) 중 하나라도 끊김이면 true, `lastOk`는 끊긴 poll들의 마지막 성공 시각 중 가장 이른 것 |
+| `onPollState(fn)` → 해제 함수 | 듣는 쪽에 `{failing, lastOk, fails}`를 준다. `failing`은 살아 있는 poll(화면 범위+전역) 중 하나라도 끊김이면 true, `lastOk`는 끊긴 poll들의 마지막 성공 시각 중 가장 이른 것(한 번도 성공 못 한 poll은 시작 시각), `fails`는 끊긴 poll 수. 상태가 바뀔 때만 부른다 |
 | `pollState()` | 같은 값을 바로 돌려준다 |
 
 `stopScope()`로 멈춘 poll은 집계에서 빠진다.
@@ -23,9 +23,9 @@ B 묶음 9개가 이 계약에 기대어 동시에 일한다. **아래 이름·�
 |---|---|
 | `errText(e)` | `ApiError`면 `e.error`(없으면 `오류 <status>`), 상태 0이면 `서버 응답 없음`, 아니면 `String(e.message ?? e)`. 화면 4곳의 사본(batch.js:134 등)과 같은 결과 |
 | `errReason(e)` | 사람이 읽을 까닭: 0 `서버 응답 없음` · 401 `로그인이 끝남` · 403 `권한 없음` · 404 `없음` · 5xx `서버 오류(<status>)` · 그 밖 `errText(e)` |
-| `toast(msg, opts)` | `opts`가 숫자면 예전처럼 ms. 객체면 `{level:'info'\|'ok'\|'error', ms, action:{text, href\|onclick}}`. `error`는 닫을 때까지 머문다(✕ 단추, `aria-label="닫기"`, `role=alert`). 한 번에 4개까지, 넘치면 오래된 info부터 지운다. 같은 글의 토스트가 떠 있으면 새로 쌓지 않는다 |
+| `toast(msg, opts)` | `opts`가 숫자면 예전처럼 ms. 객체면 `{level:'info'\|'ok'\|'error', ms, action:{text, href\|onclick}}`. `error`는 닫을 때까지 머문다(✕ 단추, `aria-label="닫기"`, `role=alert`). 한 번에 4개까지, 넘치면 오래된 info부터 지운다. 같은 글의 토스트가 떠 있으면 새로 쌓지 않는다. 반환값은 닫기 함수 |
 | `toastError(what, e)` | `toast(`${what} · ${errReason(e)}`, {level:'error'})` |
-| `stateBox(kind, opts)` → 요소 | `kind`: `'loading'`(기본 글 `불러오는 중…`) · `'empty'`(기본 `없음`) · `'error'`(기본 `불러오지 못함`). `opts`: `{text, e, detail, retry, action:{text, href\|onclick}}`. `error`는 `e`가 있으면 `errReason(e)`를 까닭 줄로, `retry`가 있으면 `다시 시도` 단추, 원문(`errText`)은 `<details>`로 접는다. 클래스 `.state .state-<kind>`, error는 `role=alert` |
+| `stateBox(kind, opts)` → 요소 | `kind`: `'loading'`(기본 글 `불러오는 중…`) · `'empty'`(기본 `없음`) · `'error'`(기본 `불러오지 못함`). `opts`: `{text, e, detail, retry, action:{text, href\|onclick}}`. `error`는 `e`가 있으면 `errReason(e)`를 까닭 줄로, `detail`은 그 아래 줄(누가 뭘 하면 풀리는지), `retry`가 있으면 `다시 시도` 단추, 원문(`errText`)은 `<details>`로 접는다. 클래스 `.state .state-<kind>`, error는 `role=alert` |
 | `act(btn, fn, opts)` → `Promise<boolean>` | `btn`을 잠그고(`disabled`, `aria-busy`) `fn()`을 기다린다. 성공하면 `opts.ok` 글을 `level:'ok'` 토스트로, 실패하면 `toastError(opts.fail ?? '하지 못함', e)`. 끝나면 푼다. `btn`이 null이어도 된다. 같은 단추가 잠겨 있으면 바로 false |
 | `confirmBox(opts)` | 반환값 그대로. 더하기: Esc=취소, 사유 칸에서 Enter=확인, 포커스 가두기, 닫으면 열기 전 포커스로 복귀, `aria-modal`·`aria-labelledby`. `opts.danger:true`면 확인 단추에 `.danger`, **첫 포커스는 취소** |
 | `openDrawer(title)` | 반환값 그대로. 더하기: Esc로 닫힘, `role=dialog`·`aria-modal`·`aria-label`, ✕에 `aria-label="닫기"`, 열리면 서랍으로 포커스, 닫으면 복귀, 포커스 가두기(안의 내용이 주기마다 다시 그려져도 동작: Tab을 누를 때 그때의 포커스 대상을 센다) |

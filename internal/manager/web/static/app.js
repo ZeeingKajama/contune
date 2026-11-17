@@ -1,7 +1,8 @@
 // 라우터 · 위 막대 · 시계 · 알림 종 · 테마.
-import { api, poll, stopScope, onHealth, isHealthy, onAuthRequired, onForbidden } from './api.js';
+import { api, poll, stopScope, onHealth, isHealthy, onAuthRequired, onForbidden, onPollState, pollState, ApiError } from './api.js';
 import { createTree, parseRoute } from './tree.js';
-import { fmtClock, toast } from './ui.js';
+import { fmtClock, toast, stateBox, setTitle, setTitleCount } from './ui.js';
+import { initQuickJump } from './quickjump.js';
 import { loadMe, logout, showLogin, drawUser, roleName } from './auth.js';
 
 const PAGES = {
@@ -15,6 +16,14 @@ const PAGES = {
   exit: './pages/exit.js', exits: './pages/exits.js',
   svc: './pages/svc.js', svcs: './pages/svc.js',
   dashes: './pages/dash.js', dash: './pages/dash.js', dashedit: './pages/dashedit.js', // 사용자 보드(07)
+};
+// 문서 제목에 쓰는 화면 이름. 상세 화면이 더 자세한 제목으로 덮어써도 된다.
+const TITLE = {
+  dashboard: '관제', hosts: '서버', host: '서버', collect: '로그 수집',
+  board: '배치', edit: '플로우 편집', biz: '업무', svcs: '서비스', svc: '서비스 타임머신',
+  dashes: '보드', dash: '보드', dashedit: '보드 편집',
+  runs: '실행', run: '타임머신', exits: '종료 보고서', exit: '종료 보고서',
+  alerts: '알림', risk: '장애 위험도', audit: '감사 기록', 'dev/flame': '플레임 그래프',
 };
 const MENU = { dashboard: 'dashboard', hosts: 'hosts', host: 'hosts', collect: 'hosts', board: 'board', edit: 'board', biz: 'biz', runs: 'runs', run: 'runs', exit: 'runs', exits: 'runs', svc: 'biz', svcs: 'biz', dashes: 'dashes', dash: 'dashes', dashedit: 'dashes' };
 
@@ -37,6 +46,7 @@ async function route() {
   const r = routeOf(location.hash);
   document.querySelectorAll('#menu a').forEach((a) => a.classList.toggle('on', a.dataset.m === MENU[r.name]));
   document.body.dataset.page = r.name;
+  setTitle(TITLE[r.name] || '');
   // 같은 화면 파일 안의 이동(보드 고르기·뒤로 가기)은 그 화면의 reroute(params, query)가 true면 다시 그리지 않는다
   if (current && current.reroute && currentPath === PAGES[r.name]) {
     try { if (current.reroute(r.params, r.query)) return; } catch (e) { console.error(e); }
@@ -54,9 +64,16 @@ async function route() {
     currentPath = PAGES[r.name];
     await mod.render(page, r.params, r.query);
   } catch (e) {
-    console.error(e);
-    page.textContent = '화면을 그리지 못함';
+    if (!(e instanceof ApiError)) console.error(e); // 서버 응답 실패는 화면에 까닭을 보인다. 코드 오류만 콘솔에
+    if (my !== seq) return;
+    // 다시 시도가 reroute에 막히지 않게 실패한 화면은 내려놓는다
+    if (current && current.dispose) { try { current.dispose(); } catch (e2) { console.error(e2); } }
+    current = null;
+    currentPath = '';
+    page.replaceChildren(stateBox('error', { text: '화면을 그리지 못함', e, retry: route }));
   }
+  // 화면을 옮긴 뒤 포커스는 화면 칸으로(화면이 스스로 옮겨 둔 포커스는 그대로)
+  if (my === seq && !page.contains(document.activeElement)) page.focus({ preventScroll: true });
 }
 
 function initTheme() {
@@ -78,13 +95,29 @@ function initTop() {
     warn.hidden = ok;
   };
   onHealth(apply); apply(isHealthy());
+  // 갱신 끊김: poll이 2번 이어 실패하면 마지막으로 받은 시각부터 표시한다
+  const stale = document.getElementById('stale');
+  const applyStale = (st) => {
+    if (st.failing) {
+      stale.textContent = `갱신 끊김 ${st.lastOk ? fmtClock(st.lastOk) : '--:--:--'}~`;
+      stale.hidden = false;
+      document.body.dataset.stale = '1';
+    } else {
+      stale.hidden = true;
+      delete document.body.dataset.stale;
+    }
+  };
+  onPollState(applyStale); applyStale(pollState());
   const tick = () => { document.getElementById('clock-t').textContent = fmtClock(Date.now()); };
   tick(); setInterval(tick, 1000);
   poll(async () => {
     const r = await api('/alerts?state=firing');
     const n = (r.alerts || []).filter((a) => !a.acked_at).length;
     document.getElementById('bell-n').textContent = String(n);
-    document.getElementById('bell').classList.toggle('has', n > 0);
+    const bell = document.getElementById('bell');
+    bell.classList.toggle('has', n > 0);
+    bell.setAttribute('aria-label', `알림 ${n}건`);
+    setTitleCount(n);
   }, 5000, { global: true });
 }
 
@@ -113,6 +146,7 @@ async function doLogout() {
 
 function start() {
   initTop();
+  initQuickJump();
   const tree = createTree(document.getElementById('tree'), { onBoards: (b) => { boards = b; } });
   onAuthRequired(() => askLogin('세션이 끝났습니다. 다시 로그인해 주세요'));
   onForbidden((need) => toast(`권한이 없습니다(${roleName(need)} 이상)`));

@@ -34,6 +34,15 @@ function pageFlags(opts, q) {
   };
 }
 
+// 실패 화면 확인용 깃발(주소 쿼리와 해시 쿼리 둘 다 본다): ?fail=/alerts,/hosts → 그 경로로 시작하는 요청에 500, ?slow=<ms> → 모든 응답을 늦춘다
+function testFlag(opts, k) {
+  const s = new URLSearchParams(opts.search ?? (typeof location !== 'undefined' ? location.search : ''));
+  if (s.get(k) !== null) return s.get(k);
+  if (typeof location === 'undefined') return null;
+  const h = String(location.hash || '').split('?')[1];
+  return h ? new URLSearchParams(h).get(k) : null;
+}
+
 export function reset() {
   resetWorld();
   collect.reset();
@@ -43,6 +52,10 @@ export function reset() {
 export async function handle(path, opts = {}) {
   const method = String(opts.method || 'GET').toUpperCase();
   const { pathname, q } = parseQuery(path);
+  const slow = Number(testFlag(opts, 'slow'));
+  if (slow > 0) await new Promise((r) => setTimeout(r, slow));
+  const fail = (testFlag(opts, 'fail') || '').split(',').map((x) => x.trim()).filter(Boolean);
+  if (fail.some((p) => pathname.startsWith(p))) return { status: 500, body: { error: 'mock 실패' } };
   const now = opts.now || Date.now();
   const w = getWorld(now);
   tick(w, now);
