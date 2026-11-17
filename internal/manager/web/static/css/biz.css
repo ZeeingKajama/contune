@@ -144,3 +144,20 @@ a.bz-arow:hover { background:var(--bg); }
 .bz-mode { margin-bottom:6px; }
 .bz-log col.c-ex { width:108px; }
 .bz-log td a.bz-own { font-family:inherit; font-size:12px; }
+
+/* UI 고도화 P5 */
+.bz-charts .bz-card.wide { grid-column:1 / -1; }
+.bz-logs.is-empty { height:auto; min-height:0; }
+.bz-logs.is-empty .bz-listbox { flex:none; }
+.bz-logs.is-empty .bz-scroll { height:auto; }
+.bz-logs.is-empty .state { padding:14px 8px; }
+.bz-lower:has(.bz-logs.is-empty) .bz-alerts { height:auto; max-height:360px; }
+table.bz-log { min-width:640px; }
+table.bz-log.bz-pat { min-width:520px; }
+.bz-tabs { flex-wrap:nowrap; overflow-x:auto; }
+.bz-tabs button, .bz-tabs .bz-group, .bz-tabs .bz-reload { flex:none; white-space:nowrap; }
+.bz-tile.click:focus-visible, .bz-log tbody tr:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+@media (max-width:600px) {
+  .bz-sig-t { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+  .bz-tn { white-space:normal; overflow:visible; }
+}
