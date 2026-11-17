@@ -1,1 +1,17 @@
-/* P9 빠른 이동(Ctrl+K) 창(ui-hardening P9가 채운다) */
+/* P9 빠른 이동(Ctrl+K) 창 */
+.qj-back { position:fixed; inset:0; z-index:var(--z-modal); background:rgba(0,0,0,.35); display:flex; justify-content:center; align-items:flex-start; padding:12vh 16px 0; }
+.qj-dlg { width:560px; max-width:100%; max-height:min(70vh, 560px); display:flex; flex-direction:column; background:var(--surface); color:var(--t1); border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:0 12px 36px rgba(0,0,0,.28); overflow:hidden; }
+.qj-in { width:100%; box-sizing:border-box; border:0; border-bottom:1px solid var(--line); border-radius:0; padding:12px 14px; font-size:var(--fs-md); background:transparent; color:inherit; }
+.qj-in:focus-visible { outline:none; border-bottom-color:var(--accent); }
+.qj-list { overflow-y:auto; min-height:0; padding:4px 0; }
+.qj-head { padding:6px 14px 2px; font-size:var(--fs-xs); color:var(--t3); font-weight:600; }
+.qj-row { display:flex; align-items:center; gap:10px; padding:7px 14px; cursor:pointer; font-size:var(--fs-md); }
+.qj-row.on { background:var(--bg); box-shadow:inset 3px 0 0 var(--accent); }
+.qj-tag { flex:none; min-width:44px; font-size:var(--fs-xs); color:var(--t3); }
+.qj-nm { flex:1; min-width:0; display:flex; gap:8px; align-items:baseline; overflow:hidden; white-space:nowrap; }
+.qj-nm > span:first-child { overflow:hidden; text-overflow:ellipsis; }
+.qj-sub { color:var(--t3); font-size:var(--fs-sm); overflow:hidden; text-overflow:ellipsis; }
+.qj-none { padding:12px 14px; color:var(--t3); font-size:var(--fs-sm); }
+.qj-none:empty { display:none; }
+#qj-open { white-space:nowrap; }
+@media (max-width:600px) { .qj-back { padding-top:8vh; } .qj-dlg { max-height:70vh; } }
