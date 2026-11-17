@@ -4,7 +4,7 @@
 a.srv-clink { font-size:var(--fs-md); color:var(--accent); text-decoration:none; border:1px solid var(--line); border-radius:var(--r-sm); padding:2px 10px; background:var(--surface); }
 a.srv-clink:hover { border-color:var(--accent); }
 .srv-tabs[data-n="7"] { grid-template-columns:repeat(7, minmax(0,1fr)); }
-@media (max-width:1100px) { .srv-tabs[data-n="7"] { grid-template-columns:repeat(4, minmax(0,1fr)); } }
+@media (max-width:1200px) { .srv-tabs[data-n="7"] { grid-template-columns:repeat(4, minmax(0,1fr)); } }
 .srv-tab .tv .lv.cs-applied { color:var(--ok); } .srv-tab .tv .lv.cs-pending, .srv-tab .tv .lv.cs-partial { color:var(--warn); }
 .srv-tab .tv .lv.cs-failed { color:var(--crit); } .srv-tab .tv .lv.cs-disabled, .srv-tab .tv .lv.cs-unknown { color:var(--silent); }
 

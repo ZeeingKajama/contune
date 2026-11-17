@@ -198,7 +198,7 @@
 .tl-row.running .tl-m { color:var(--st-running); } .tl-row.gated .tl-m { color:var(--st-gated); }
 .tl-row.done .tl-m { color:var(--st-succeeded); }
 
-@media (max-width:1100px) {
+@media (max-width:1200px) {
   .cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .lower { grid-template-columns:minmax(0,1fr); grid-template-areas:"map" "ev" "tl"; }
   .lower .dwatch .wl { flex:none; max-height:320px; }

@@ -6,7 +6,7 @@
 
 /* 탭 카드: 이름 · 대표 값 · 구간 추이. 고른 카드는 위 테두리 강조 */
 .srv-tabs { display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:8px; margin-bottom:12px; }
-@media (max-width:1100px) { .srv-tabs { grid-template-columns:repeat(3, minmax(0,1fr)); } }
+@media (max-width:1200px) { .srv-tabs { grid-template-columns:repeat(3, minmax(0,1fr)); } }
 .srv-tab { display:flex; flex-direction:column; align-items:stretch; gap:1px; min-width:0; text-align:left; padding:8px 12px 8px; border:1px solid var(--line); border-radius:var(--r-lg); background:var(--surface); color:var(--t1); position:relative; overflow:hidden; }
 .srv-tab::before { content:""; position:absolute; left:0; right:0; top:0; height:3px; background:transparent; }
 .srv-tab:hover { border-color:var(--accent); }
@@ -51,7 +51,7 @@
 .srv .meter.warn .num { color:var(--warn); font-weight:600; } .srv .meter.crit .num { color:var(--crit); font-weight:600; }
 .srv .meter.stale .num { color:var(--t3); } .srv .meter.stale .mf { background:var(--silent); opacity:.35; }
 .srv .hid { white-space:nowrap; }
-@media (max-width:1100px) { .srv .meter .mt { width:44px; } }
+@media (max-width:1200px) { .srv .meter .mt { width:44px; } }
 /* 목록의 정상 배지는 테두리 없는 회색: 이상(위험·경고·무응답) 배지만 눈에 띄게. 자리는 같게 둔다 */
 .srv-list .badge.ok { color:var(--t3); border-color:transparent; }
 /* 프로세스 탭: 종료된 프로세스(종료 보고서) */
@@ -96,7 +96,7 @@
 .srv-sort .ar { font-size:var(--fs-xs); color:var(--t3); opacity:.6; }
 .srv-sort.on .ar { color:var(--accent); opacity:1; }
 th.num .srv-sort { justify-content:flex-end; }
-@media (max-width:700px) {
+@media (max-width:900px) {
   .srv-ptbl { min-width:640px; }
   .srv-ptbl th, .srv-ptbl td, .srv-twrap .tbl th, .srv-twrap .tbl td { white-space:nowrap; }
   .srv-list th, .srv-list td { white-space:nowrap; }

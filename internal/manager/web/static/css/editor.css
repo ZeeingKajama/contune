@@ -22,7 +22,7 @@
 
 /* 본문 3열 */
 .ed-body { flex:1; display:grid; grid-template-columns:200px minmax(0,1fr) 340px; min-height:0; border:1px solid var(--line); border-radius:var(--r-lg); overflow:hidden; background:var(--surface); }
-@media (max-width:1180px) { .ed-body { grid-template-columns:168px minmax(0,1fr) 300px; } }
+@media (max-width:1200px) { .ed-body { grid-template-columns:168px minmax(0,1fr) 300px; } }
 @media (max-width:900px) {
   .ed { height:auto; }
   .ed-body { grid-template-columns:minmax(0,1fr); }

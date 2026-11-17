@@ -23,7 +23,7 @@
 .tm-kpis { grid-template-columns:repeat(6,minmax(0,1fr)); margin-bottom:0; }
 .tm-kpis .bt-kpi .kv .num { font-size:16px; font-weight:650; }
 .tm-kpis .bt-kpi .kv.c-crit .num { color:var(--crit); }
-@media (max-width:1300px) { .tm-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media (max-width:1200px) { .tm-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 
 .tm-card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md); padding:10px 12px; min-width:0; }
 .tm-ch { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
@@ -110,7 +110,7 @@
 .tm-exit .tx { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .tm-exit .go { flex:none; color:var(--accent); font-weight:600; }
 .tm-exit:hover { border-color:var(--accent); } .tm-exit:hover .tx { text-decoration:underline; }
-@media (max-width:700px) { .tm-exit .tx { white-space:normal; } }
+@media (max-width:900px) { .tm-exit .tx { white-space:normal; } }
 
 /* 계보(lineage.js, 06 §7.2): 실행 → 스텝 명령 → 띄운 프로세스의 가로 트리. 이음선은 가지(.lg-br)의 ::before(가로) · ::after(세로)와
    자식 묶음(.lg-kids)의 ::before(부모 → 세로선). 노드는 가지 안에서 세로 가운데라 선이 노드 가운데에 닿는다 */
@@ -155,7 +155,7 @@ a.lg-node.run:focus-visible { outline:2px solid var(--accent); outline-offset:1p
 .lg-cnt { font-size:var(--fs-sm); color:var(--t3); }
 .lg-kids > .lg-br > .lg-node:only-child { flex-grow:1; } /* 잎 칸은 같은 열에서 너비를 맞춘다(250px까지) */
 /* 좁은 화면: 들여쓰기 세로 트리(부모 아래로 자식, 세로선은 왼쪽). 가로로 밀리면 강조한 칸이 화면 밖으로 나간다 */
-@media (max-width:700px) {
+@media (max-width:900px) {
   .lg-row { min-width:0; }
   .lg-br { flex-direction:column; align-items:stretch; }
   .lg-kids { margin-left:12px; padding-left:0; }

@@ -65,7 +65,7 @@ button.acc { border-color:var(--accent); color:var(--accent); }
 .rfold[open] > summary { margin-bottom:8px; }
 .rfold .rfold { margin-top:8px; }
 .rfold .rfold > summary { font-size:var(--fs-md); }
-@media (max-width:1100px) {
+@media (max-width:1200px) {
   .rrow { grid-template-columns:20px 1fr auto; }
   .rc-base { display:none; }
   .rc-where, .rc-hold { grid-column:2; }
@@ -79,7 +79,7 @@ button.acc { border-color:var(--accent); color:var(--accent); }
 .atbl .c-chk { width:24px; }
 .atbl tr.achild td { background:color-mix(in srgb, var(--t3) 6%, transparent); color:var(--t2); }
 .atbl tr.achild .c-tgt, .atbl tr.achild .c-lv { padding-left:14px; }
-@media (max-width:700px) {
+@media (max-width:900px) {
   .atbl, .atbl tbody { display:block; }
   .atbl thead { display:none; }
   .atbl tr { display:grid; grid-template-columns:auto auto auto 1fr auto; grid-template-areas:"chk lv kind tgt time" "msg msg msg msg ack" "st st st st st"; gap:2px 8px; align-items:center; padding:8px 4px; border-bottom:1px solid var(--line); }

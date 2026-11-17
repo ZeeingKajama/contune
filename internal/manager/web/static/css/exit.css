@@ -155,7 +155,7 @@ mark.hl, .ex-prof .hl { background:color-mix(in srgb, var(--crit) 18%, transpare
 .ex-prof .ps .leaf { color:var(--t1); font-weight:600; }
 .ex-refs { display:flex; flex-wrap:wrap; gap:4px 12px; align-items:baseline; font-size:var(--fs-md); }
 .ex-refs a { color:var(--accent); text-decoration:none; } .ex-refs a:hover { text-decoration:underline; }
-@media (max-width:640px) { .ex-ev { grid-template-columns:1fr; } }
+@media (max-width:600px) { .ex-ev { grid-template-columns:1fr; } }
 
 /* 종료 정보: 두 열, 열마다 이름표 · 값 */
 .ex-cols { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px 32px; }

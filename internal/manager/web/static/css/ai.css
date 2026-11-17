@@ -21,7 +21,7 @@
 
 .ai-body { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; margin-top:6px; }
 .ai-brief.has-trace .ai-body { grid-template-columns:minmax(0,1.35fr) minmax(300px,1fr); }
-@media (max-width:1100px) { .ai-brief.has-trace .ai-body { grid-template-columns:minmax(0,1fr); } }
+@media (max-width:1200px) { .ai-brief.has-trace .ai-body { grid-template-columns:minmax(0,1fr); } }
 .ai-head { margin:0 0 4px; font-size:16px; font-weight:700; line-height:1.4; color:var(--t1); }
 .ai-head.lv-crit { color:var(--crit); } .ai-head.lv-warn { color:var(--warn); }
 .ai-lines { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:3px; }
@@ -40,7 +40,7 @@ a.ai-ref:hover { border-color:var(--ai); }
 
 /* 브리핑 오른쪽: 원인 추적 요약 */
 .ai-trace { border-left:1px solid var(--line); padding-left:14px; display:flex; flex-direction:column; gap:6px; min-width:0; font-size:var(--fs-md); }
-@media (max-width:1100px) { .ai-trace { border-left:0; border-top:1px solid var(--line); padding:8px 0 0; } }
+@media (max-width:1200px) { .ai-trace { border-left:0; border-top:1px solid var(--line); padding:8px 0 0; } }
 .at-h { display:flex; align-items:baseline; gap:5px; min-width:0; }
 .at-h b { color:var(--ai-ink); }
 .at-src { color:var(--t3); font-size:var(--fs-sm); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }

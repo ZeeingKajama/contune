@@ -75,7 +75,7 @@ table.rn-tbl { width:100%; border-collapse:collapse; table-layout:fixed; font-si
 .slow-tag { flex:none; font-size:var(--fs-xs); font-weight:700; color:var(--warn); cursor:help; font-variant-numeric:tabular-nums; }
 /* 1200px 이하: 실행 유형·실행 ID 열을 숨겨 플로우 › 스텝이 잘리지 않게. 700px 이하는 표를 옆으로 민다(.tblwrap) */
 @media (max-width:1200px) { .rn-tbl .hm { display:none; } .rn-tbl col.c-dur { width:132px; } .rn-tbl col.c-st { width:86px; } .rn-tbl col.c-at { width:112px; } .rn-tbl .dtrack { min-width:12px; } }
-@media (max-width:700px) { table.rn-tbl { min-width:620px; } .rn-search { width:100%; } }
+@media (max-width:900px) { table.rn-tbl { min-width:620px; } .rn-search { width:100%; } }
 
 /* 실행 메뉴의 두 화면: 실행 이력 · 종료 보고서 */
 .rn-tabs { display:flex; gap:18px; align-items:baseline; margin:0 0 8px; }
