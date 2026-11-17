@@ -174,13 +174,15 @@ button.danger:hover { background:color-mix(in srgb, var(--crit) 10%, var(--surfa
 .u-legend .u-value, .u-legend .u-label { color:var(--t1); }
 .u-cursor-x { border-right:1px solid var(--t3) !important; opacity:.7; }
 .u-select { background:color-mix(in srgb, var(--accent) 14%, transparent); }
+/* 구간 단추: 붙은 단추 여럿 중 하나 고르기(시간 구간·값 출처·스케줄 방식·로그 보기). 거르기 칩(.bt-seg, 숫자·점이 붙음)과 다르다 */
+.seg { display:inline-flex; align-items:stretch; border:1px solid var(--line); border-radius:var(--r-md); background:var(--surface); overflow:hidden; }
+.seg button { border:0; border-radius:0; border-right:1px solid var(--line); padding:3px 12px; background:none; }
+.seg button:last-child { border-right:0; }
+.seg button:hover { background:var(--bg); }
+.seg button.on { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
 .trange { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
-.trange .trseg { display:inline-flex; align-items:stretch; border:1px solid var(--line); border-radius:var(--r-md); background:var(--surface); overflow:hidden; }
 .trange .trpre { padding:3px 10px; color:var(--t3); font-size:var(--fs-sm); display:flex; align-items:center; border-right:1px solid var(--line); }
-.trange .trseg button { border:0; border-radius:0; border-right:1px solid var(--line); padding:3px 12px; background:none; }
-.trange .trseg button:last-child { border-right:0; }
-.trange .trseg button:hover { background:var(--bg); }
-.trange button.on, .trange .trseg button.on { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
+.trange button.on { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
 .trange .trcustom { border-radius:var(--r-md); }
 .trange input[type=datetime-local] { padding:1px 4px; }
 .trange .trlabel { margin-left:auto; display:flex; gap:8px; align-items:center; font-size:var(--fs-sm); color:var(--t2); font-variant-numeric:tabular-nums; }

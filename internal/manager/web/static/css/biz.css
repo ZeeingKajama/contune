@@ -42,7 +42,7 @@
 .bz-logs, .bz-alerts { display:flex; flex-direction:column; height:560px; }
 .bz-lh { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
 .bz-lh .sec { margin:0 4px 0 0; }
-.bz-lh .bt-seg button { padding:2px 10px; font-size:var(--fs-md); }
+.bz-lh .bt-seg button, .bz-lh .seg button { padding:2px 10px; font-size:var(--fs-md); }
 .bt-seg .dot.l-error { --c:var(--crit); } .bt-seg .dot.l-warn { --c:var(--warn); }
 .bz-search { width:180px; }
 button.ghost { padding:2px 10px; font-size:var(--fs-md); }

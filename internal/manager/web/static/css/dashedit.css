@@ -71,10 +71,7 @@ body[data-page="dashedit"] #tree { display:none; }
 .de-chk { display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; font-size:var(--fs-md); }
 .de-chk label { display:inline-flex; align-items:center; gap:4px; }
 .de-text { resize:vertical; font:inherit; }
-.de-seg { display:inline-flex; align-self:flex-start; border:1px solid var(--line); border-radius:var(--r-sm); overflow:hidden; }
-.de-seg button { border:0; border-radius:0; border-right:1px solid var(--line); padding:3px 12px; background:none; }
-.de-seg button:last-child { border-right:0; }
-.de-seg button.on { background:var(--accent); color:var(--on-accent); }
+.de-seg { align-self:flex-start; } /* 모양은 .seg */
 .de-qs { display:flex; flex-direction:column; gap:8px; }
 .de-q { display:flex; flex-direction:column; gap:6px; border:1px solid var(--line); border-radius:var(--r-md); padding:8px; background:var(--bg); }
 .de-qh { display:flex; align-items:center; gap:6px; min-width:0; }

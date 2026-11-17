@@ -705,7 +705,7 @@ function mount(page, info, st, ctx) {
     const schedBody = el('div', { class: 'ed-sbody' });
     const sum = el('div', { class: 'ed-ssum' });
     nextBox = el('div', { class: 'ed-next' });
-    const seg = el('div', { class: 'ed-seg', role: 'tablist' });
+    const seg = el('div', { class: 'seg ed-seg', role: 'tablist' });
     const setSched = () => { st.schedule = cronFrom(ui.sched); touch(); drawSum(); };
     const drawSeg = () => seg.replaceChildren(...SCHED_MODES.map(([k, t]) => el('button', {
       type: 'button', class: ui.sched.mode === k ? 'on' : '', role: 'tab', 'aria-selected': String(ui.sched.mode === k), text: t,

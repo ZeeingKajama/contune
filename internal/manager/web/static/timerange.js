@@ -50,7 +50,7 @@ export function createTimeRange(host, opts = {}) {
       el('span', { class: 'num', text: fmtSpan(c.from, c.to) })].filter(Boolean));
   }
   function draw() {
-    const seg = el('span', { class: 'trseg', role: 'group', 'aria-label': '최근 구간' },
+    const seg = el('span', { class: 'seg trseg', role: 'group', 'aria-label': '최근 구간' },
       el('span', { class: 'trpre', text: '최근' }),
       ...RANGES.map(([id, text]) => el('button', {
         type: 'button', class: state.live && state.range === id ? 'on' : '', text,

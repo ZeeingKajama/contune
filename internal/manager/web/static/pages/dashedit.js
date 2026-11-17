@@ -607,7 +607,7 @@ function mount(page, st, refs, ctx) {
 
     if (f.has('ref')) {
       sec('값');
-      kids.push(el('div', { class: 'de-seg', role: 'group', 'aria-label': '값 출처' },
+      kids.push(el('div', { class: 'seg de-seg', role: 'group', 'aria-label': '값 출처' },
         segBtn('지표', !refMode, () => {
           if (!w.ref) return;
           delete w.ref;

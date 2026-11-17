@@ -670,7 +670,7 @@ async function renderPage(host, id, query, my, offs) {
       if (board) board.setRange(state.from, state.to, true);
     }
     function drawRange() {
-      const seg = el('span', { class: 'trseg', role: 'group', 'aria-label': '구간' },
+      const seg = el('span', { class: 'seg trseg', role: 'group', 'aria-label': '구간' },
         ...rangeKeys(dash).map((k) => el('button', {
           type: 'button', class: state.live && state.key === k ? 'on' : '', 'aria-pressed': state.live && state.key === k ? 'true' : 'false',
           text: rangeLabel(k), title: k === defKey ? '보드 기본 구간' : null, onclick: () => liveRange(k),
