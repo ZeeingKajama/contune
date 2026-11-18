@@ -223,6 +223,13 @@ func TestTraceServiceDown(t *testing.T) {
 	if b.Trace != nil || b.Headline != "체결 서비스 중단(위험)" {
 		t.Fatalf("headline=%q trace=%+v", b.Headline, b.Trace)
 	}
+	// 대표 이슈는 원인 분석 없이: 권장 조치는 이 서비스의 기동 · 종료 이력(다른 알림의 조치가 아니다)
+	if b.Focus == nil || b.Focus.Title != "체결 서비스 중단" || b.Focus.Traced || len(b.Focus.Symptoms) != 1 || b.Focus.Symptoms[0].Label != "서비스 미기동" {
+		t.Fatalf("focus=%+v", b.Focus)
+	}
+	if len(b.NextChecks) == 0 || b.NextChecks[0] != "match-01 체결 서비스의 마지막 종료 보고서 · 기동 실행 확인" {
+		t.Fatalf("checks=%v", b.NextChecks)
+	}
 }
 
 // 원인 후보는 앱 함수에서 고른다: [unknown]·libc 내부·잠들기 함수가 더 늘어도 표에만 보인다.
@@ -876,5 +883,143 @@ func TestPromptsCarryStyle(t *testing.T) {
 	}
 	if req := briefPrompt(Brief{}, briefPack{}); !strings.Contains(req.System, llm.Style) {
 		t.Error("브리핑 System에 말투 안내 없음")
+	}
+}
+
+// 대표 이슈: 업무 알림 묶음의 현상 · 원인 분석 · 그 서버의 서버 알림. 다른 서버의 이상은 기타 이슈로 한 번만.
+func TestBriefFocusAndOthers(t *testing.T) {
+	w := newWorld(t, t0+60_000)
+	a := w.alert(t, p99Alert())
+	w.alert(t, model.Alert{TS: t0 - 3_600_000, Kind: "host", DedupKey: "host:dw-02", Level: "crit", State: "firing", Host: "dw-02", Group: "대외정보/정보계", Message: "dw-02 서버 위험: 메모리 사용률 ≥ 90%"})
+	w.alert(t, model.Alert{TS: t0 - 30_000, Kind: "host", DedupKey: "host:match-01", Level: "warn", State: "firing", Host: "match-01", Group: "매매/체결", Message: "match-01 서버 경고: CPU 사용률 ≥ 70%"})
+	inc, err := w.st.CreateIncident(context.Background(), model.Incident{Start: t0, Title: "자동: 체결 · p99 응답 시간 80ms (경고 50)", Source: "auto"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := w.svc().Brief(context.Background(), "")
+
+	f := b.Focus
+	if f == nil || f.Incident == nil || f.Incident.Ref != fmt.Sprintf("incident:%d", inc) || !hasEvidence(b.Evidence, f.Incident.Ref) {
+		t.Fatalf("이 이슈의 장애 기록: %+v", f)
+	}
+	if b.Level != "crit" { // 진행 중 장애는 기타 이슈에 쓰지 않아도 수준은 위험
+		t.Fatalf("level=%s", b.Level)
+	}
+	if f == nil || f.Title != "체결 응답 지연" || b.Title != f.Title || f.Level != "warn" || !f.Traced || f.Since != t0-30_000 {
+		t.Fatalf("focus=%+v title=%q", f, b.Title)
+	}
+	if len(f.Hosts) != 1 || f.Hosts[0] != "match-01" {
+		t.Fatalf("hosts=%v", f.Hosts)
+	}
+	want := []Symptom{
+		{Label: "p99 응답 시간", Value: "80ms", Limit: "임계 50", Host: "match-01", Level: "warn"},
+		{Label: "match-01", Value: "CPU 사용률 ≥ 70%", Host: "match-01", Level: "warn"},
+	}
+	if len(f.Symptoms) != len(want) {
+		t.Fatalf("symptoms=%+v", f.Symptoms)
+	}
+	for i, s := range f.Symptoms {
+		if s.Label != want[i].Label || s.Value != want[i].Value || s.Limit != want[i].Limit || s.Host != want[i].Host || s.Level != want[i].Level || len(s.Refs) != 1 || !hasEvidence(b.Evidence, s.Refs[0]) {
+			t.Fatalf("symptoms[%d]=%+v, want %+v", i, s, want[i])
+		}
+	}
+	if f.Symptoms[0].Refs[0] != fmt.Sprintf("alert:%d", a.ID) {
+		t.Fatalf("현상 근거=%v", f.Symptoms[0].Refs)
+	}
+	// 기타 이슈: dw-02만(match-01 CPU는 대표 이슈의 현상), 원인 줄 · 체결 줄은 없다
+	var texts []string
+	for _, o := range b.Others {
+		texts = append(texts, o.Text)
+		if len(o.Refs) == 0 {
+			t.Fatalf("근거 없는 기타 이슈 %q", o.Text)
+		}
+	}
+	got := strings.Join(texts, "\n")
+	if !strings.Contains(got, "dw-02 메모리 사용률 ≥ 90%") || strings.Contains(got, "match-01") || strings.Contains(got, "book_insert") || strings.Contains(got, "체결") || strings.Contains(got, "장애") {
+		t.Fatalf("others:\n%s", got)
+	}
+	if b.Trace == nil || b.Trace.Trigger != "주문 유입량 1,500 → 6,000 TPS(×4.0)" {
+		t.Fatalf("trigger=%q", b.Trace.Trigger)
+	}
+}
+
+// 대표 이슈가 없으면 제목은 무엇이 몇 건인지만(수준은 화면 아이콘이 보인다)
+func TestBriefTitleWithoutFocus(t *testing.T) {
+	w := newWorld(t, t0+60_000)
+	s := w.svc()
+	if b := s.Brief(context.Background(), ""); b.Title != "전체 정상" || b.Focus != nil || b.Others == nil {
+		t.Fatalf("idle: title=%q focus=%+v others=%v", b.Title, b.Focus, b.Others)
+	}
+	w2 := newWorld(t, t0+60_000)
+	w2.alert(t, model.Alert{TS: t0, Kind: "host", DedupKey: "host:dw-02", Level: "crit", State: "firing", Host: "dw-02", Group: "대외정보/정보계", Message: "dw-02 서버 위험: 메모리 사용률 ≥ 90%"})
+	b := w2.svc().Brief(context.Background(), "")
+	if b.Title != "서버 이상 1대" || b.Focus != nil || len(b.Others) == 0 || b.Others[0].Text != "dw-02 메모리 사용률 ≥ 90%" || b.Others[0].Level != "crit" {
+		t.Fatalf("host only: title=%q others=%+v", b.Title, b.Others)
+	}
+	// 방금 풀린 업무 알림이 있어도 위험 서버가 진행 중이면 "현재 정상"이 아니다. 해소 줄은 짧게
+	w3 := newWorld(t, t0+60_000)
+	a := p99Alert()
+	a.State, a.ResolvedAt = "resolved", t0+40_000
+	w3.alert(t, a)
+	w3.alert(t, model.Alert{TS: t0, Kind: "host", DedupKey: "host:dw-02", Level: "crit", State: "firing", Host: "dw-02", Group: "대외정보/정보계", Message: "dw-02 서버 위험: 메모리 사용률 ≥ 90%"})
+	b3 := w3.svc().Brief(context.Background(), "")
+	var gone string
+	for _, o := range b3.Others {
+		if strings.HasPrefix(o.Text, "최근 10분 해소") {
+			gone = o.Text
+		}
+	}
+	if b3.Title != "서버 이상 1대" || b3.Level != "crit" || !strings.HasPrefix(gone, "최근 10분 해소 1건 · p99 응답 시간 80ms (") {
+		t.Fatalf("live + recent: title=%q level=%s others=%+v", b3.Title, b3.Level, b3.Others)
+	}
+	if len(b3.NextChecks) == 0 || strings.Count(b3.NextChecks[len(b3.NextChecks)-1], "dw-02") > 1 {
+		t.Fatalf("checks=%v", b3.NextChecks)
+	}
+	// 서버가 넘치면 기타 이슈는 네 대 + 나머지 한 줄, 제목은 전체 대수
+	for i := 1; i <= 5; i++ {
+		h := fmt.Sprintf("ext-0%d", i)
+		w2.alert(t, model.Alert{TS: t0, Kind: "host", DedupKey: "host:" + h, Level: "warn", State: "firing", Host: h, Group: "채널", Message: h + " 서버 경고: CPU 사용률 ≥ 70%"})
+	}
+	w2.clk.Add(briefCache)
+	b = w2.svc().Brief(context.Background(), "")
+	if b.Title != "서버 이상 6대" || len(b.Others) != 5 || b.Others[4].Text != "그 밖의 서버 이상 2대" || len(b.Others[4].Refs) != 2 {
+		t.Fatalf("hosts overflow: title=%q others=%+v", b.Title, b.Others)
+	}
+}
+
+func TestSymptomOf(t *testing.T) {
+	for _, tc := range []struct {
+		a                         model.Alert
+		label, value, limit, host string
+	}{
+		{model.Alert{Kind: "tile", Message: "체결 · 대기 큐 2,240건 (위험 2,000)"}, "대기 큐", "2,240건", "임계 2,000", ""},
+		{model.Alert{Kind: "tile", Message: "체결 · RT p99 385ms (경고 200)"}, "RT p99", "385ms", "임계 200", ""},
+		{model.Alert{Kind: "tile", Message: "시세 · 1분 시세량 30,000건/분 · feed-03 (경고 하한 60,000)"}, "1분 시세량", "30,000건/분", "하한 60,000", "feed-03"},
+		{model.Alert{Kind: "tile", Host: "feed-01", Message: "시세 · 1분 시세량 값 끊김 45초 · feed-01 (기준 30초)"}, "1분 시세량", "값 끊김 45초", "기준 30초", "feed-01"},
+		{model.Alert{Kind: "log", Host: "match-01", Name: "matching", Value: 24, Message: "(E) 24건 · order reject"}, "오류 로그(matching)", "24건", "", "match-01"},
+		{model.Alert{Kind: "service", Host: "feed-01", Message: "시세(feed-01) 서비스 미기동: 살아 있는 프로세스 0 / 1"}, "서비스 미기동", "살아 있는 프로세스 0 / 1", "", "feed-01"},
+		{model.Alert{Kind: "host", Host: "ext-04", Message: "ext-04 서버 무응답: 수신 없음 14초"}, "ext-04", "무응답(수신 없음 14초)", "", "ext-04"},
+		{model.Alert{Kind: "tile", Message: "체결 · 알 수 없는 꼴"}, "업무 지표 알림", "알 수 없는 꼴", "", ""},
+	} {
+		s := symptomOf(tc.a, "x")
+		if s.Label != tc.label || s.Value != tc.value || s.Limit != tc.limit || s.Host != tc.host {
+			t.Errorf("%q → %+v, want %q %q %q %q", tc.a.Message, s, tc.label, tc.value, tc.limit, tc.host)
+		}
+	}
+}
+
+func TestChipText(t *testing.T) {
+	for _, tc := range []struct {
+		a    model.Alert
+		want string
+	}{
+		{model.Alert{Kind: "service", Host: "dw-01", Message: "매매통계(dw-01) 서비스 미기동: 살아 있는 프로세스 0 / 1"}, "dw-01"},
+		{model.Alert{Kind: "tile", Message: "체결 · 대기 큐 2,240건 (위험 2,000)"}, "대기 큐 2,240건"},
+		{model.Alert{Kind: "tile", Message: "시세 · 1분 시세량 30,000건/분 · feed-03 (경고 하한 60,000)"}, "1분 시세량 30,000건/분 · feed-03"},
+		{model.Alert{Kind: "log", Host: "match-01", Value: 24, Message: "(E) 24건 · order reject"}, "24건"},
+	} {
+		if got := chipText(tc.a); got != tc.want {
+			t.Errorf("%q → %q, want %q", tc.a.Message, got, tc.want)
+		}
 	}
 }

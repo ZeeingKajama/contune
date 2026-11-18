@@ -4,7 +4,7 @@
 // 시간대별 배치에서 편 목록이 남아 있으면 접는다(막 1의 장면)
 const closePick = { click: '.dtl .tl-pick .tl-x', unless: (doc) => !doc.querySelector('.dtl .tl-pick') };
 
-// 실시간 이벤트에서 체결 대기 큐 알림 줄의 ✦ 원인. 첫 줄은 다른 알림이라 글자로 찾는다.
+// 실시간 이벤트에서 체결 대기 큐 알림 줄의 ✦(원인 분석). 첫 줄은 다른 알림이라 글자로 찾는다.
 const whyBtn = (doc) => {
   const row = [...doc.querySelectorAll('.dwatch .wl .wrow')].find((r) => /대기 큐/.test(r.textContent));
   return row ? row.querySelector('.wtr') : null;
@@ -30,9 +30,9 @@ export default {
   title: '원인을 찾아라',
   stops: [
     {
-      id: 'trace', title: '✦ 원인',
+      id: 'trace', title: '✦ 원인 분석',
       say: '체결 대기 큐 알림. 왜 쌓였는지 이음이 대신 따라갑니다.',
-      point: '실시간 이벤트의 체결 · 대기 큐 줄 끝 ✦ 원인',
+      point: '실시간 이벤트의 체결 · 대기 큐 줄 끝 ✦',
       go: '#dashboard', exact: true, scene: [closePick],
       target: whyBtn,
       press: [
@@ -41,7 +41,7 @@ export default {
       ],
     },
     {
-      id: 'steps', title: '추적 단계',
+      id: 'steps', title: '분석 단계',
       say: '알림 → 주인 찾기 → 구간 나누기 → 함수 비교. 뭘 보고 말하는지 그대로 보입니다.',
       keep: true,
       target: inDrawer('ol.at-steps'),
@@ -56,7 +56,7 @@ export default {
     {
       id: 'judge', title: 'AI는 도우미일 뿐',
       say: 'AI 판단은 초안입니다. 같은 근거의 규칙 판단을 아래에 펴 두었습니다.',
-      point: '근거 칩 · 확인할 것',
+      point: '근거 칩 · 권장 조치',
       keep: true,
       scene: [{ wait: traced }, { run: (doc) => { const d = doc.querySelector('#drawer details.aj-rule'); if (d) d.open = true; } }],
       target: inDrawer('section.at-judge'),

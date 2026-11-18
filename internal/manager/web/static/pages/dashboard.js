@@ -559,8 +559,9 @@ export function eventList(alerts, panels, hs, flows) {
       (ack ? `<span class="wa" title="${esc(ack.title)}">${esc(ack.text)}</span>` : '');
     row.append(link);
     if (traceable(a)) {
-      const tb = el('button', { type: 'button', class: 'wtr', title: '이 알림에서 원인 함수까지 추적(대상 식별 → 비교 구간 → 프로파일 비교 → 콜스택)' });
-      tb.textContent = `${AI_MARK} 원인`;
+      // 줄마다 붙는 단추라 기호만(✦ = 관제 AI). 이름은 aria-label · title로
+      const tb = el('button', { type: 'button', class: 'wtr', 'aria-label': `원인 분석: ${alertName(a)}`, title: '원인 분석 — 이 알림에서 원인 함수까지(대상 식별 → 비교 구간 → 프로파일 비교 → 콜스택)' });
+      tb.textContent = AI_MARK;
       tb.addEventListener('click', () => openTrace(a.id, { alertHref: (x) => alertTarget(x, panels) }));
       row.append(tb);
     }
