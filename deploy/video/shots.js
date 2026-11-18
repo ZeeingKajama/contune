@@ -36,7 +36,7 @@ module.exports = [
 
   // ---- ② 알림에서 원인 함수까지 ----
   { card: 'c-sec1', dur: 3.2 },
-  { stop: 'trace', k: K2, t: '체결이 밀리고 있네요. ✦ 원인을 누르면', look: [990, 480, 600, 320], click: true, dur: 3.2 },
+  { stop: 'trace', k: K2, t: '체결이 밀리고 있네요. ✦ 원인 분석을 누르면', look: [990, 480, 600, 320], click: true, dur: 3.2 },
   { stop: 'steps', k: K2, t: '체계적인 순서로 <em>이음이 대신</em> 따라갑니다', look: [937, 83, 647, 420], dur: 3.4 },
   { stop: 'fn', k: K2, t: '평소(A)와 이상 구간(B)을 한눈에 비교, <em><code>book_insert</code> 15% → 63%</em>', look: 'target', dur: 4.4 },
   { stop: 'totm', k: K2, t: '<em>타임머신</em>을 타고 그때 상황으로 돌아가 봅니다', look: [937, 600, 647, 300], click: true, dur: 2.6 },

@@ -110,8 +110,26 @@ export function badge(state, text) {
   return s.firstChild;
 }
 
+// 수준 아이콘(SVG): 위험 = 팔각형 !, 경고 = 삼각형 !, 정상 = 원 ✓, 무응답 = 빈 원 –. 모양이 달라 색을 못 가려도 읽힌다.
+// 글자는 var(--surface)라 어두운 테마에서도 밝은 바탕 위에 진하게 보인다. text가 있으면 aria-label을 그것으로.
+const LEVEL_SVG = {
+  crit: '<path d="M5.1 1h5.8L15 5.1v5.8L10.9 15H5.1L1 10.9V5.1z" class="lvi-b"/><path d="M8 4.1v4.8" class="lvi-s"/><circle cx="8" cy="11.7" r="1.15" class="lvi-g"/>',
+  warn: '<path d="M8 1.2c.4 0 .7.2.9.5l6.4 11.6c.4.7-.1 1.5-.9 1.5H1.6c-.8 0-1.3-.8-.9-1.5L7.1 1.7c.2-.3.5-.5.9-.5z" class="lvi-b"/><path d="M8 5.4v4.1" class="lvi-s"/><circle cx="8" cy="12" r="1.05" class="lvi-g"/>',
+  ok: '<circle cx="8" cy="8" r="7" class="lvi-b"/><path d="M4.8 8.2l2.2 2.2 4.2-4.6" class="lvi-s"/>',
+  silent: '<circle cx="8" cy="8" r="6.2" class="lvi-o"/><path d="M5.2 8h5.6" class="lvi-d"/>',
+};
+export function levelIconHTML(level, text) {
+  const k = LEVEL_SVG[level] ? level : 'silent';
+  return `<span class="lvi ${k}" role="img" aria-label="${esc(text ?? LEVEL_TEXT[level] ?? '알림')}"><svg viewBox="0 0 16 16" aria-hidden="true">${LEVEL_SVG[k]}</svg></span>`;
+}
+export function levelIcon(level, text) {
+  const s = document.createElement('span');
+  s.innerHTML = levelIconHTML(level, text);
+  return s.firstChild;
+}
+
 // 빈 상태 문구
-export const EMPTY = { none: DASH, notCollected: '미수집', serviceDown: '서비스 미기동' };
+export const EMPTY ={ none: DASH, notCollected: '미수집', serviceDown: '서비스 미기동' };
 
 // ---- DOM 부품 ----
 let uidSeq = 0;

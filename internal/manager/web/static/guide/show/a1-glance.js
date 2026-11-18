@@ -33,8 +33,8 @@ export default {
   stops: [
     {
       id: 'brief', title: 'AI 상황 브리핑',
-      say: '열자마자 지금 상황 세 줄. 근거는 이음이 모으고 AI는 문장만 씁니다.',
-      point: '줄 끝 칩이 그 줄의 근거 · 오른쪽 원인 추적 book_insert 15% → 63%',
+      say: '가장 급한 이슈 하나를 현상 · 추정 원인 · 권장 조치로 나눕니다. 근거는 이음이 모으고 AI는 제목 · 판단 문장만 씁니다.',
+      point: '위험 아이콘 · 추정 원인 book_insert 15% → 63% · 맨 아래 기타 이슈',
       go: HOME, exact: true, scene: [closePick],
       target: '.ai-slot > section.ai-brief',
     },
@@ -75,7 +75,7 @@ export default {
     {
       id: 'events', title: '실시간 이벤트',
       say: '서버 · 배치 · 업무 알림이 심한 순으로 한 목록에 옵니다.',
-      point: '줄을 누르면 그 화면 · ✦ 원인은 다음 막에서',
+      point: '줄을 누르면 그 화면 · 줄 끝 ✦(원인 분석)는 다음 막에서',
       go: HOME, exact: true, scene: [closePick],
       target: 'section.dpanel.dwatch',
     },

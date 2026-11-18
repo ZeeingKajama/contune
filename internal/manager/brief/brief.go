@@ -297,7 +297,7 @@ type Line struct {
 	Refs  []string `json:"refs"`
 }
 
-// TraceBrief는 브리핑이 고른 대표 알림의 원인 추적 요약이다(화면 카드의 "원인 추적" 칸).
+// TraceBrief는 브리핑이 고른 대표 알림의 원인 분석 요약이다(화면 카드의 "추정 원인" 칸).
 type TraceBrief struct {
 	AlertID      int64       `json:"alert_id"`
 	Message      string      `json:"message"`
@@ -312,17 +312,24 @@ type TraceBrief struct {
 	Compared     bool        `json:"compared"`
 	Top          *FuncChange `json:"top,omitempty"`
 	Path         []string    `json:"path,omitempty"`
-	Metric       string      `json:"metric,omitempty"` // 같은 구간 지표 변화 한 줄
+	Metric       string      `json:"metric,omitempty"`  // 같은 구간 지표 변화 한 줄
+	Trigger      string      `json:"trigger,omitempty"` // 유발 요인: 1.5배 넘게 오른 트래픽 지표 한 줄(없으면 "")
 	Diag         Diagnosis   `json:"diag"`
 	AI           AIState     `json:"ai"`
 }
 
 // Brief는 상황 브리핑이다. By: llm(LLM이 쓴 문장) | rule(규칙 문장).
+//
+// 화면은 Title(또는 LLM의 Headline) 아래에 대표 이슈(Focus)를 현상 · 추정 원인(Trace) · 권장 조치(NextChecks)로 나눠 그리고,
+// 나머지는 기타 이슈(Others)로 한 번씩만 쓴다(focus.go). Lines는 LLM이면 그 칸들을 이어 읽는 판단, 규칙이면 LLM에 주는 참고 문장이다.
 type Brief struct {
 	At         int64       `json:"at"`
 	Level      string      `json:"level"` // ok | warn | crit
+	Title      string      `json:"title"` // 화면 제목(규칙): 수준 말 · 원인 함수 없는 짧은 말. 예: "체결 응답 지연", "전체 정상"
 	Headline   string      `json:"headline"`
 	Lines      []Line      `json:"lines"`
+	Focus      *Focus      `json:"focus,omitempty"` // 대표 이슈(업무 알림이 있을 때)
+	Others     []Line      `json:"others"`          // 대표 이슈 밖의 진행 중 이상(심한 순)
 	NextChecks []string    `json:"next_checks"`
 	Evidence   []Evidence  `json:"evidence"`
 	Trace      *TraceBrief `json:"trace,omitempty"`
@@ -428,6 +435,7 @@ func (s *Service) composeLocked(e *briefEntry, now int64) Brief {
 		// 서명이 같아도(서버 경고는 서명에 없다) 수준이나 규칙 머리글이 그때와 다르면 아래로 내려가 규칙 문장을 보인다.
 		l := *e.llm
 		l.Evidence, l.Trace, l.Level, l.At = e.b.Evidence, e.b.Trace, e.b.Level, e.b.At
+		l.Title, l.Focus, l.Others = e.b.Title, e.b.Focus, e.b.Others // 칸은 근거에서 바로 만든다(LLM이 쓰지 않는다)
 		l.AI = AIState{State: "ok", Model: name, At: l.WrittenAt}
 		l.Rule = &rule
 		return l
@@ -475,6 +483,7 @@ func (s *Service) askBrief(g, sig string, rule Brief, pack briefPack) {
 	}
 	b.WrittenAt = now
 	b.Evidence, b.Trace, b.Level, b.At = rule.Evidence, rule.Trace, rule.Level, rule.At // 앞 문장으로 보일 때 쓸 그 때의 근거
+	b.Title, b.Focus, b.Others = rule.Title, rule.Focus, rule.Others
 	e.llm, e.llmSig, e.llmHead, e.llmErr = &b, sig, rule.Headline, ""
 }
 
@@ -513,7 +522,7 @@ func inGroup(group, g string) bool { return g == "" || group == g || strings.Has
 // ruleBrief는 근거를 모아 규칙 문장을 쓴다. sig는 상황 서명(알림 키·수준, 위험 수준·요인, 실패 배치, 장애, 추적 결과),
 // 값이 조금 바뀌는 것으로는 바뀌지 않는다(LLM을 다시 부를지 정하는 데 쓴다).
 func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, string, briefPack) {
-	b := Brief{At: now, WrittenAt: now, By: "rule", Level: "ok", Lines: []Line{}, NextChecks: []string{}, Evidence: []Evidence{}}
+	b := Brief{At: now, WrittenAt: now, By: "rule", Level: "ok", Lines: []Line{}, Others: []Line{}, NextChecks: []string{}, Evidence: []Evidence{}}
 	var sig []string
 	ev := map[string]bool{}
 	add := func(e Evidence) {
@@ -548,7 +557,7 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 	if err = errors.Join(err, err2); err != nil {
 		// 알림을 못 읽었는데 "전체 정상"이라고 쓰지 않는다. 서명을 비워 LLM도 부르지 않는다.
 		slog.Warn("상황 브리핑: 알림을 읽지 못했습니다", "err", err)
-		b.Level, b.Headline = "warn", "알림을 읽지 못함 — 지금 상황을 알 수 없음"
+		b.Level, b.Headline, b.Title = "warn", "알림을 읽지 못함 — 지금 상황을 알 수 없음", "알림을 읽지 못함"
 		b.NextChecks = []string{"매니저 로그에서 저장소(state.db) 오류 확인"}
 		return b, "", briefPack{}
 	}
@@ -649,12 +658,39 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 			tr = t
 			tb = &TraceBrief{AlertID: a.ID, Message: a.Message, Level: a.Level, State: t.State, Final: t.Final, Service: t.Service,
 				ServiceTitle: t.ServiceTitle, Host: t.Host, A: t.A, B: t.B, Compared: t.Compared, Top: t.Top, Path: t.Path,
-				Metric: t.metricSentence(1), Diag: t.Diag, AI: t.AI}
+				Metric: t.metricSentence(1), Trigger: t.triggerSentence(), Diag: t.Diag, AI: t.AI}
 			break
 		}
 	}
 
-	for _, gr := range groups {
+	// 대표 이슈: 가장 급한 업무 알림 묶음. 그 서버의 서버 알림은 현상에 함께 쓰고 기타 이슈에서 뺀다.
+	var focus *Focus
+	var focusAlerts []model.Alert
+	focusTitle, focusSignal := "", ""
+	var others []Line
+	inFocus := map[int64]bool{}
+	if len(groups) > 0 {
+		gr := groups[0]
+		focusAlerts, focusTitle, focusSignal = gr.alerts, gr.title, gr.signal
+		mine := false
+		for _, a := range gr.alerts {
+			mine = mine || (tb != nil && a.ID == tb.AlertID)
+		}
+		th := ""
+		if mine {
+			th = tb.Host
+		}
+		var rel []model.Alert
+		for _, a := range hostAlerts {
+			if relatedHost(a.Host, gr.alerts, th) {
+				rel = append(rel, a)
+				inFocus[a.ID] = true
+			}
+		}
+		focus = focusOf(gr.title, gr.signal, gr.alerts, rel, th, mine, addAlert)
+	}
+
+	for gi, gr := range groups {
 		ids := []string{}
 		var msgs []string
 		top := gr.alerts[0]
@@ -673,8 +709,16 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 			where = " · " + top.Host
 		}
 		lines = append(lines, Line{Text: fmt.Sprintf("%s: %s%s%s · %s 경과", gr.title, strings.Join(msgs, ", "), more, where, span(now-top.TS)), Level: top.Level, Refs: ids})
+		if gi > 0 { // 기타 이슈는 칩 한 개 길이로: 대표 알림 하나 + 나머지 수
+			rest := ""
+			if n := len(gr.alerts) - 1; n > 0 {
+				rest = fmt.Sprintf(" 외 %d건", n)
+			}
+			others = append(others, Line{Text: gr.title + " " + plainSignal(gr.signal) + " · " + chipText(top) + rest, Level: top.Level, Refs: ids})
+		}
 	}
 	// 최근 해소된 업무 알림(지금 업무 알림이 없을 때만)
+	nGoneLines := 0
 	if len(groups) == 0 && len(gone) > 0 {
 		ids := []string{}
 		for _, a := range gone[:min(3, len(gone))] {
@@ -683,6 +727,8 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 		a := gone[0]
 		lines = append(lines, Line{Text: fmt.Sprintf("최근 10분 해소: %s (%s, %s 지속)%s", alertShort(a), clock(a.ResolvedAt, s.d.Loc), span(a.ResolvedAt-a.TS),
 			map[bool]string{true: fmt.Sprintf(" 외 %d건", len(gone)-1), false: ""}[len(gone) > 1]), Level: "", Refs: ids})
+		others = append(others, Line{Text: fmt.Sprintf("최근 10분 해소 %d건 · %s (%s 해소)", len(gone), compactAlert(a), clock(a.ResolvedAt, s.d.Loc)[:5]), Level: "ok", Refs: ids})
+		nGoneLines = 1
 		sig = append(sig, fmt.Sprintf("g:%s", a.DedupKey))
 	}
 
@@ -692,7 +738,7 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 		if tb.Diag.Detail != "" {
 			lines2 = append(lines2, tb.Diag.Detail)
 		}
-		add(Evidence{ID: id, Kind: "trace", Label: "원인 추적", Title: "원인 추적: " + tb.Message, Lines: lines2,
+		add(Evidence{ID: id, Kind: "trace", Label: "원인 분석", Title: "원인 분석: " + tb.Message, Lines: lines2,
 			AlertID: tb.AlertID, Host: tb.Host, Service: tb.Service})
 		for _, x := range tr.Evidence { // 추적의 함수·경로·지표 근거도 LLM이 인용할 수 있게
 			if x.Kind == "fn" || x.Kind == "path" || x.Kind == "metric" {
@@ -710,6 +756,7 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 	}
 
 	// 진행 중 장애
+	nInc := 0
 	if incs, err := s.d.State.ListIncidents(ctx, now, 0); err == nil {
 		for _, in := range incs {
 			if in.End != 0 || (g != "" && in.Scope != "" && !inGroup(in.Scope, g) && !inGroup(g, in.Scope)) {
@@ -721,11 +768,19 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 			lines = append(lines, Line{Text: fmt.Sprintf("진행 중 장애: %s (%s 경과)", in.Title, span(now-in.Start)), Level: "crit", Refs: []string{id}})
 			sig = append(sig, id)
 			b.Level = "crit"
+			nInc++
+			// 대표 이슈로 열린 장애 기록은 상태 줄에 표시하고 기타 이슈에 따로 쓰지 않는다
+			if focus != nil && focus.Incident == nil && relatedIncident(in, focusTitle, focusAlerts) {
+				focus.Incident = &Incident{Ref: id, Title: in.Title, Start: in.Start}
+				continue
+			}
+			others = append(others, lines[len(lines)-1])
 		}
 	}
 
 	// 장애 위험도
 	var riskCheck string
+	riskHot := false
 	if sc, lv, ok := s.risk(); ok {
 		oi, ol := sc.Index, lv
 		if s.d.RiskOpen != nil {
@@ -768,6 +823,12 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 				text += " · 주요 요인 " + strings.Join(parts, ", ")
 			}
 			lines = append(lines, Line{Text: text, Level: ol, Refs: ids})
+			riskHot = true
+			// 기타 이슈에는 지수만: 요인(대기 큐 · p99 같은 값)은 대표 이슈의 현상과 겹치고 장애 위험도 카드에 보인다
+			if focus != nil {
+				text = fmt.Sprintf("장애 위험 지수 %s", num(oi))
+			}
+			others = append(others, Line{Text: text, Level: ol, Refs: ids})
 			if lvl(ol) > lvl(b.Level) {
 				b.Level = ol
 			}
@@ -783,6 +844,7 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 	}
 
 	// 서버
+	nHostLines := 0
 	if len(hostAlerts) > 0 {
 		ids := []string{}
 		var parts []string
@@ -803,14 +865,45 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 			lv = "crit"
 		}
 		lines = append(lines, Line{Text: fmt.Sprintf("서버 이상 %d대: %s%s", len(hostAlerts), strings.Join(parts, ", "), more), Level: lv, Refs: ids})
+		// 기타 이슈: 대표 이슈 밖의 서버를 한 대씩(넘치면 나머지를 한 줄로)
+		n0 := len(others)
+		var rest []model.Alert
+		for _, a := range hostAlerts {
+			if !inFocus[a.ID] {
+				rest = append(rest, a)
+			}
+		}
+		for i, a := range rest {
+			if i == maxOtherHosts && len(rest) > maxOtherHosts+1 {
+				more, lv := []string{}, "warn"
+				for _, x := range rest[i:] {
+					more = append(more, addAlert(x))
+					if x.Level == "crit" {
+						lv = "crit"
+					}
+				}
+				others = append(others, Line{Text: fmt.Sprintf("그 밖의 서버 이상 %d대", len(rest)-i), Level: lv, Refs: more})
+				break
+			}
+			others = append(others, Line{Text: alertShort(a), Level: a.Level, Refs: []string{addAlert(a)}})
+		}
+		nHostLines = len(others) - n0
 	}
 
 	// 그 밖의 진행 중 알림(종료·실행·위험도·신호 없는 타일)
+	nOther := 0
+	var runAlerts []model.Alert
 	for _, a := range otherAlerts {
 		if a.Kind == "risk" || (a.Kind == "tile" && !s.notable(a)) {
 			continue
 		}
 		lines = append(lines, Line{Text: alertShort(a), Level: a.Level, Refs: []string{addAlert(a)}})
+		nOther++
+		if a.Kind == "run" { // 실행 실패 알림은 기타 이슈에 한 줄로 모은다(아래 실패 배치 줄이 있으면 그 줄이 대신한다)
+			runAlerts = append(runAlerts, a)
+			continue
+		}
+		others = append(others, lines[len(lines)-1])
 	}
 
 	// 오늘 실패한 배치(플로우별)
@@ -832,6 +925,20 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 			more = fmt.Sprintf(" 외 %d개", len(failed)-2)
 		}
 		lines = append(lines, Line{Text: fmt.Sprintf("오늘 실패한 배치 %d개: %s%s", len(failed), strings.Join(parts, ", "), more), Level: "warn", Refs: ids})
+		others = append(others, lines[len(lines)-1])
+		runAlerts = nil
+	}
+	if len(runAlerts) > 0 {
+		var ids, names []string
+		seen := map[string]bool{}
+		for _, a := range runAlerts {
+			ids = append(ids, addAlert(a))
+			if n := orDash(a.Name); !seen[n] && len(names) < 2 {
+				seen[n] = true
+				names = append(names, n)
+			}
+		}
+		others = append(others, Line{Text: fmt.Sprintf("배치 실행 실패 %d건: %s", len(runAlerts), strings.Join(names, ", ")), Level: "crit", Refs: ids})
 	}
 
 	// 머리글
@@ -840,12 +947,8 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 		gr := groups[0]
 		b.Headline = gr.title + " " + signalWord(gr.signal, gr.alerts[0].Level)
 		// 원인 추적이 이 묶음의 알림일 때만 머리글에 붙인다(다른 서버의 추적을 이 묶음의 원인처럼 쓰지 않게)
-		mine := false
-		for _, a := range gr.alerts {
-			mine = mine || (tb != nil && a.ID == tb.AlertID)
-		}
 		switch {
-		case !mine:
+		case !focus.Traced:
 		case tb.Top != nil && tb.Compared && tb.Top.Diff >= 3:
 			b.Headline += " — 원인 후보 " + tb.Top.Leaf
 		case tb.State == "collecting":
@@ -856,20 +959,46 @@ func (s *Service) ruleBrief(ctx context.Context, g string, now int64) (Brief, st
 		lines = lines[:4]
 	}
 	b.Lines = lines
+	b.Focus = focus
+	if focus != nil {
+		b.Title = focus.Title
+	} else {
+		live := len(others) - nGoneLines // 진행 중인 이슈 줄(최근 해소 줄은 빼고)
+		hostsOnly := nHostLines > 0 && nHostLines == live
+		n := live
+		if hostsOnly { // 서버 이상뿐: 넘쳐 한 줄로 모은 서버까지 대수로
+			n = len(hostAlerts)
+		}
+		b.Title = briefTitle(n, hostsOnly, len(gone), nInc, riskHot)
+	}
+	sort.SliceStable(others, func(i, j int) bool { return lvl(others[i].Level) > lvl(others[j].Level) })
+	if len(others) > maxOthers {
+		others = others[:maxOthers]
+	}
+	if others != nil {
+		b.Others = others
+	}
 
-	// 점검 항목: 추적 → 위험 요인 → 실패 배치
-	if tb != nil {
-		for _, c := range tb.Diag.NextChecks {
-			if len(b.NextChecks) < maxBriefChecks {
-				b.NextChecks = append(b.NextChecks, c)
-			}
+	// 권장 조치: 원인 분석 → 위험 요인 → 서버. 대표 이슈가 있으면 그 이슈의 조치만: 원인 분석이 그 이슈의 것이면 그 조치,
+	// 아니면 이슈의 신호(서비스 중단 · 오류 로그 · 지표)에 맞는 조치(다른 알림의 조치를 이 이슈의 것처럼 쓰지 않게).
+	checks := []string{}
+	switch {
+	case tb != nil && (focus == nil || focus.Traced):
+		checks = append(checks, tb.Diag.NextChecks...)
+	case focus != nil:
+		checks = append(checks, focusChecks(focusSignal, focusTitle, focusAlerts[0])...)
+	}
+	if riskCheck != "" {
+		checks = append(checks, riskCheck)
+	}
+	for _, c := range checks {
+		if len(b.NextChecks) < maxBriefChecks {
+			b.NextChecks = append(b.NextChecks, c)
 		}
 	}
-	if riskCheck != "" && len(b.NextChecks) < maxBriefChecks {
-		b.NextChecks = append(b.NextChecks, riskCheck)
-	}
-	if len(b.NextChecks) == 0 && len(hostAlerts) > 0 {
-		b.NextChecks = append(b.NextChecks, hostAlerts[0].Host+" 서버 상세에서 "+alertShort(hostAlerts[0])+" 확인")
+	if len(b.NextChecks) == 0 && len(hostAlerts) > 0 && focus == nil {
+		h := hostAlerts[0]
+		b.NextChecks = append(b.NextChecks, h.Host+" 서버 상세에서 "+strings.TrimPrefix(alertShort(h), h.Host+" ")+" 확인")
 	}
 
 	sort.Strings(sig)

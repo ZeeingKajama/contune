@@ -95,6 +95,15 @@ body[data-page="edit"] #tree { display:none; }
 
 .badge { display:inline-flex; align-items:center; gap:3px; font-size:var(--fs-sm); padding:0 6px; border-radius:9px; border:1px solid currentColor; white-space:nowrap; }
 .badge.ok, .badge.succeeded { color:var(--ok); } .badge.warn { color:var(--warn); } .badge.crit, .badge.failed { color:var(--crit); }
+/* 수준 아이콘(ui.js levelIcon): 바탕은 수준 색, 글자(! ✓)는 카드 바탕색 */
+.lvi { display:inline-flex; width:16px; height:16px; flex:none; vertical-align:-3px; }
+.lvi svg { width:100%; height:100%; overflow:visible; }
+.lvi.crit { color:var(--crit); } .lvi.warn { color:var(--warn); } .lvi.ok { color:var(--ok); } .lvi.silent { color:var(--silent); }
+.lvi .lvi-b { fill:currentColor; }
+.lvi .lvi-s { fill:none; stroke:var(--surface); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.lvi .lvi-g { fill:var(--surface); }
+.lvi .lvi-o { fill:none; stroke:currentColor; stroke-width:1.6; }
+.lvi .lvi-d { fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; }
 .badge.silent, .badge.waiting { color:var(--silent); } .badge.running { color:var(--st-running); } .badge.gated { color:var(--st-gated); } .badge.forced { color:var(--st-forced); }
 
 table.tbl { border-collapse:collapse; width:100%; }

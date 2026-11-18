@@ -445,7 +445,7 @@ function mockTrace(c, a) {
     ...metrics.map((m) => ({ id: 'metric:' + m.name, kind: 'metric', label: m.title, title: m.title, lines: [`평균 A ${fmtN(m.a)} → B ${fmtN(m.b)} ${m.unit}`] })),
   ];
   const cpu = metrics.find((m) => m.name === 'svc.cpu.pct');
-  const rule = { title: `원인 후보 ${top.leaf} — 주문 유입량 ${xOf(metrics[0])}`, detail: `Self CPU 점유율 ${self}(${ppOf(top.diff)}) · 동시간대 ${inflow}${cpu ? `, ${cpu.title} ${fmtN(cpu.a)} → ${fmtN(cpu.b)}${cpu.unit}(${xOf(cpu)})` : ''}`, confidence: 'high', evidence_ids: ['alert', 'owner', 'window', 'fn:book_insert', 'path', 'metric:biz.order.in_tps'], next_checks: ['타임머신 B 구간 플레임 그래프에서 book_insert 콜스택 확인', '주문 유입량 급증 출처 확인(정상 거래 / 재시도·비정상 호출)', 'book_insert의 입력 크기 비례 연산(반복·탐색)·락 경합 확인'], by: 'rule' };
+  const rule = { title: `원인 후보 ${top.leaf} — 주문 유입량 ${xOf(metrics[0])}`, detail: `Self CPU 점유율 ${self}(${ppOf(top.diff)}) · 동시간대 ${inflow}${cpu ? `, ${cpu.title} ${fmtN(cpu.a)} → ${fmtN(cpu.b)}${cpu.unit}(${xOf(cpu)})` : ''}`, confidence: 'high', evidence_ids: ['alert', 'owner', 'window', 'fn:book_insert', 'path', 'metric:biz.order.in_tps'], next_checks: ['B 구간 플레임 그래프에서 book_insert 호출 경로 확인', '주문 유입량 급증 출처 확인(정상 거래 / 재시도·비정상 호출)', 'book_insert의 입력 규모 비례 연산(반복·탐색)·락 경합 점검'], by: 'rule' };
   // 체험판 · 시연판의 AI 문장은 계산한 숫자만 옮긴다(숫자가 달라 full의 풀이 문장이 맞지 않을 수 있다)
   const llm = DEMO
     ? { title: `${top.leaf} CPU 점유율 급증 — 주문 유입 ${xOf(metrics[0])}`, detail: `Self CPU 점유율 ${self} · 동시간대 ${inflow}, 콜스택 ${path.slice(-2).join(' › ')}`, confidence: 'high', evidence_ids: ['fn:book_insert', 'path', 'metric:biz.order.in_tps'], next_checks: ['B 구간 플레임 그래프에서 book_insert 콜스택 확인', '주문 유입 급증 출처 확인(정상 거래 여부)'], by: 'llm', model: 'mock-llm', at: now - 4 * SEC }
@@ -461,41 +461,102 @@ function trace(c, m) {
   return a ? ok(mockTrace(c, a)) : err(404, '없는 알림');
 }
 
+// 현상 한 줄(매니저 brief/focus.go symptomOf와 같은 모양): 지표 · 현재 값 · 기준. mock 문구 꼴(서버 · 로그)도 가른다.
+const TILE_MSG = /^(.+?) (값 끊김 \S+|-?[0-9][0-9,.]*\S*)(?: · (\S+))? \(([^)]*)\)$/;
+const limitText = (s) => {
+  const m = /^(위험|경고) (하한 )?(.*)$/.exec(String(s).trim());
+  return m ? (m[2] ? `하한 ${m[3]}` : `임계 ${m[3]}`) : String(s).trim();
+};
+function symptomOf(a, ref) {
+  const s = { label: '', value: '', limit: '', host: a.host || '', level: a.level, refs: [ref] };
+  const short = String(a.message || '').split(' · ').slice(1).join(' · ') || a.message;
+  const m = TILE_MSG.exec(short);
+  if (a.kind === 'tile' && m) return { ...s, label: m[1], value: m[2], limit: limitText(m[4]), host: m[3] || s.host };
+  if (a.kind === 'log') { const n = /\(E\) 로그 ([\d,]+)건/.exec(a.message); return { ...s, label: `오류 로그(${String(short).split(' ')[0]})`, value: `${n ? n[1] : fmtN(a.value)}건` }; }
+  if (a.kind === 'host' && m) return { ...s, label: m[1], value: m[2], limit: limitText(m[4]) }; // "CPU 78% (경고 70%)"
+  return { ...s, label: a.host || a.group || '', value: short };
+}
+const LV = { crit: 2, warn: 1, ok: 0 };
+const KIND_RANK = { tile: 0, service: 1, log: 2, host: 3 };
+const byLevel = (x, y) => (LV[y.level] || 0) - (LV[x.level] || 0);
+
 function brief(c) {
   const { now } = c;
   const firing = buildAlerts(c).filter((a) => a.state === 'firing');
-  const ev = [], lines = [];
-  const alertEv = (a) => { const id = `alert:${a.id}`; ev.push({ id, kind: 'alert', label: a.kind === 'host' ? a.host : (a.message.split(' · ')[1] || a.message).replace(/\s[\d,.]+.*$/, ''), title: a.message, alert_id: a.id, alert: a, host: a.host }); return id; };
-  const biz = firing.filter((a) => a.group === '매매체결' && a.kind !== 'host' && a.kind !== 'exit');
+  const ev = [], lines = [], others = [];
+  const seen = new Set();
+  const alertEv = (a) => {
+    const id = `alert:${a.id}`;
+    if (!seen.has(id)) { seen.add(id); ev.push({ id, kind: 'alert', label: a.kind === 'host' ? a.host : (a.message.split(' · ')[1] || a.message).replace(/\s[\d,.]+.*$/, ''), title: a.message, alert_id: a.id, alert: a, host: a.host }); }
+    return id;
+  };
+  const shortOf = (a) => a.message.replace(' · ', ' ');
+  const biz = firing.filter((a) => a.group === '매매체결' && !['host', 'exit', 'run'].includes(a.kind));
+  const vendor = firing.filter((a) => a.group === '정보분배' && a.kind === 'tile');
   const hosts = firing.filter((a) => a.kind === 'host');
-  let tb = null, times = '';
+  const runs = firing.filter((a) => a.kind === 'run');
+  let tb = null, focus = null;
   if (biz.length) {
     const ids = biz.map(alertEv);
     lines.push({ text: `체결: ${biz.slice(0, 2).map((a) => a.message.split(' · ').slice(1).join(' · ')).join(', ')}${biz.length > 2 ? ` 외 ${biz.length - 2}건` : ''}`, level: 'crit', refs: ids });
     const t = mockTrace(c, biz.find((a) => a.kind === 'tile') || biz[0]);
-    tb = { alert_id: t.alert_id, message: t.alert.message, level: t.alert.level, state: t.state, final: true, service: t.service, service_title: t.service_title, host: t.host, a: t.a, b: t.b, compared: t.compared, top: t.top, path: t.path, metric: inflowText(t.metrics[0]), diag: t.diag, ai: t.ai };
-    times = xOf(t.metrics[0]);
-    ev.push({ id: 'trace', kind: 'trace', label: '원인 추적', title: '원인 추적: ' + t.alert.message, lines: [t.diag.title], alert_id: t.alert_id, host: t.host, service: t.service });
+    tb = { alert_id: t.alert_id, message: t.alert.message, level: t.alert.level, state: t.state, final: true, service: t.service, service_title: t.service_title, host: t.host, a: t.a, b: t.b, compared: t.compared, top: t.top, path: t.path,
+      metric: inflowText(t.metrics[0]), trigger: inflowText(t.metrics[0]), diag: t.diag, ai: t.ai };
+    ev.push({ id: 'trace', kind: 'trace', label: '원인 분석', title: '원인 분석: ' + t.alert.message, lines: [t.diag.title], alert_id: t.alert_id, host: t.host, service: t.service });
     lines.push({ text: t.rule.title, level: 'crit', refs: ['trace'] });
+    // 대표 이슈: 체결 알림 + 원인 분석이 따라간 서버(match-01)의 서버 알림
+    const related = hosts.filter((a) => a.host === t.host || biz.some((b) => b.host && b.host === a.host));
+    const all = [...biz, ...related].sort((x, y) => byLevel(x, y) || (KIND_RANK[x.kind] ?? 9) - (KIND_RANK[y.kind] ?? 9));
+    focus = { title: '체결 응답 지연', level: all.some((a) => a.level === 'crit') ? 'crit' : 'warn', since: Math.min(...all.map((a) => a.ts)),
+      hosts: [...new Set([t.host, ...biz.map((a) => a.host).filter(Boolean)])].sort(), symptoms: all.slice(0, 5).map((a) => symptomOf(a, alertEv(a))), traced: true };
+  }
+  if (vendor.length) { // 시연판: 벤더 패널 알림 묶음(매니저는 패널 묶음마다 한 줄)
+    const ids = vendor.map(alertEv);
+    lines.push({ text: `정보 벤더 시세: ${vendor[0].message.split(' · ').slice(1).join(' · ')}${vendor.length > 1 ? ` 외 ${vendor.length - 1}건` : ''}`, level: 'crit', refs: ids });
+    const sy = symptomOf(vendor[0], ''); // 칩: 묶음 이름 + 지표 · 값 · 서버(매니저 chipText)
+    others.push({ text: `정보 벤더 시세 유입 이상 · ${sy.label} ${sy.value}${sy.host ? ` · ${sy.host}` : ''}${vendor.length > 1 ? ` 외 ${vendor.length - 1}건` : ''}`, level: 'crit', refs: ids });
   }
   if (hosts.length) {
     const ids = hosts.map(alertEv);
-    lines.push({ text: `서버 이상 ${hosts.length}대: ${hosts.slice(0, 3).map((a) => a.message.replace(' · ', ' ')).join(', ')}`, level: 'crit', refs: ids });
+    lines.push({ text: `서버 이상 ${hosts.length}대: ${hosts.slice(0, 3).map(shortOf).join(', ')}`, level: 'crit', refs: ids });
+    // 기타 이슈 칩: "dw-02 메모리 93% (임계 90%)"(현상 줄과 같은 말: 수준은 아이콘이 보인다)
+    const chipOf = (a) => { const sy = symptomOf(a, ''); return sy.limit ? `${a.host} ${sy.label} ${sy.value} (${sy.limit})` : shortOf(a); };
+    for (const a of hosts) if (!focus || !focus.symptoms.some((s) => s.refs[0] === `alert:${a.id}`)) others.push({ text: chipOf(a), level: a.level, refs: [alertEv(a)] });
   }
-  ev.push({ id: 'risk', kind: 'risk', label: '위험도', title: '장애 위험 지수' });
+  // 장애 위험도 · 진행 중 장애(매니저: 대표 이슈의 장애 기록은 기타 이슈에 따로 쓰지 않는다)
+  const rv = riskView(c);
+  ev.push({ id: 'risk', kind: 'risk', label: '위험도', title: `장애 위험 지수 ${Math.round(rv.open_index)}` });
+  if (rv.open_level !== 'ok') others.push({ text: `장애 위험 지수 ${Math.round(rv.open_index)}`, level: rv.open_level, refs: ['risk'] });
+  for (const inc of rv.incidents || []) {
+    const id = `incident:${inc.id}`;
+    ev.push({ id, kind: 'incident', label: '장애', title: '진행 중 장애: ' + inc.title });
+    if (focus && !focus.incident && String(inc.title).replace(/^자동: /, '').startsWith('체결 · ')) { focus.incident = { ref: id, title: inc.title, start: inc.start }; continue; }
+    others.push({ text: `진행 중 장애: ${inc.title} (${Math.round((now - inc.start) / MIN)}분 경과)`, level: 'crit', refs: [id] });
+  }
+  if (runs.length) {
+    const names = [...new Set(runs.map((a) => a.name))].slice(0, 2);
+    others.push({ text: `배치 실행 실패 ${runs.length}건: ${names.join(', ')}`, level: 'crit', refs: runs.map(alertEv) });
+  }
+  others.sort(byLevel);
   const level = firing.some((a) => a.level === 'crit') ? 'crit' : firing.length ? 'warn' : 'ok';
-  const rule = { at: now, written_at: now, level, by: 'rule', evidence: ev, trace: tb, lines: lines.slice(0, 4),
+  const hostsOnly = !focus && hosts.length && !runs.length && !vendor.length;
+  const title = focus ? focus.title : hostsOnly ? `서버 이상 ${hosts.length}대` : others.length ? `진행 중 이슈 ${others.length}건` : '전체 정상';
+  const rule = { at: now, written_at: now, level, by: 'rule', evidence: ev, trace: tb, lines: lines.slice(0, 4), title, focus, others: others.slice(0, 8),
     headline: biz.length ? '체결 응답 지연(위험) — 원인 후보 book_insert' : hosts.length ? `위험 ${hosts.length}건 — ${hosts[0].message}` : '전체 정상 — 진행 중 알림 없음',
-    next_checks: biz.length ? ['타임머신 B 구간 플레임 그래프에서 book_insert 콜스택 확인', '주문 유입량 급증 출처 확인(정상 거래 / 재시도·비정상 호출)'] : [],
+    next_checks: biz.length ? ['B 구간 플레임 그래프에서 book_insert 호출 경로 확인', '주문 유입량 급증 출처 확인(정상 거래 / 재시도·비정상 호출)'] : [],
     ai: { state: 'none' } };
+  ev.push({ id: 'scope', kind: 'scope', label: '범위', title: `범위 전체 · 서버 ${c.w.hosts.length}대 · 진행 중 알림 ${firing.length}건` });
   if (!c.flags.llm) return ok(rule);
+  // AI 초안: 제목과 판단(칸들을 이어 읽는 인과 · 별건 구분)만. 칸의 수치는 옮겨 적지 않는다
+  const apart = others.filter((o) => o.refs.some((r) => r.startsWith('alert:') && hosts.some((a) => `alert:${a.id}` === r))).slice(0, 2);
+  const apartNames = apart.map((o) => o.text.split(' ')[0]);
   return ok({ ...rule, by: 'llm', model: 'mock-llm', written_at: now - 4 * SEC, ai: { state: 'ok', model: 'mock-llm', at: now - 4 * SEC }, rule: { ...rule, rule: undefined },
-    headline: biz.length ? `체결 응답 지연(위험) — 원인 후보 ${tb.top.leaf}` : rule.headline,
+    headline: biz.length ? '체결 응답 지연 — 주문 유입 급증' : rule.title,
     lines: biz.length ? [
-      { text: '체결 p99 응답 시간·대기 큐 위험 · match-01', level: 'crit', refs: ev.filter((e) => e.kind === 'alert' && e.alert.group === '매매체결').map((e) => e.id) },
-      { text: `${tb.top.leaf} CPU 포화 · 유발 요인 주문 유입 ${times}`, level: 'crit', refs: ['trace'] },
-      ...lines.filter((l) => l.text.startsWith('서버')),
-    ] : rule.lines });
+      { text: `주문 유입 급증이 ${tb.top.leaf} CPU 점유를 끌어올려 체결 대기 큐·응답 시간이 임계 초과`, level: 'crit', refs: ['trace', ...focus.symptoms.slice(0, 1).flatMap((s) => s.refs)] },
+      ...(apart.length ? [{ text: `${apartNames.join('·')} 서버 이상은 체결과 별건 — 체결 처리 복구 우선`, level: 'warn', refs: apart.flatMap((o) => o.refs).slice(0, 3) }] : []),
+    ] : rule.lines,
+    next_checks: biz.length ? ['book_insert 호가 단계 수·삽입 위치 분포 확인', '유입 급증 종목·주문 유형 편중 확인'] : [] });
 }
 
 export const routes = [
