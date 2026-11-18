@@ -109,6 +109,39 @@
   .chips li b { color: var(--o-hi); }
   .cta { margin-top: 34px; padding: 18px 40px; border-radius: 50px; background: var(--o); color: #fff; font-size: 36px; font-weight: 800; }
 
+  /* 인트로 만화: 넓은 그림 한 장을 카메라가 옮겨 다니고, 말풍선 · 효과음은 그 위에 글자로 얹는다(그림에는 글자가 없다) */
+  .card.comic { background: #0f0e0d; overflow: hidden; }
+  .card.comic.on > * { opacity: 1 !important; animation: none !important; }
+  .cm-bg { position: absolute; inset: -60px; background: url(comic/room.jpg) center / cover; filter: blur(30px) brightness(.42); }
+  .cm-shake { position: absolute; inset: 0; }
+  .cm-shake.go { animation: shake .11s linear 12 !important; }
+  @keyframes shake { 0% { transform: translate(0, 0); } 25% { transform: translate(-7px, 4px); } 50% { transform: translate(6px, -5px); } 75% { transform: translate(-4px, -3px); } 100% { transform: translate(0, 0); } }
+  #cm-img { position: absolute; left: 0; top: 0; width: 2000px; height: 667px; transform-origin: 0 0;
+    transition-property: transform; transition-timing-function: cubic-bezier(.45, 0, .2, 1); }
+  .cm-flash { position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(1000px 700px at 50% 0%, rgba(255, 45, 30, .6), rgba(255, 45, 30, .12) 60%, rgba(255, 45, 30, 0) 80%); }
+  .card.comic.on .cm-flash.go { animation: flash .42s ease-in-out infinite alternate !important; }
+  @keyframes flash { from { opacity: .05; } to { opacity: .9; } }
+  .card.comic.on .cm-flash.off { opacity: 0 !important; transition: opacity .4s; }
+  .cm-dim { position: absolute; inset: 0; background: rgba(15, 13, 12, .74); transition: opacity .7s; }
+  .card.comic.on > .cm-dim:not(.go) { opacity: 0 !important; }
+  .cm-hook { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .card.comic.on > .cm-hook:not(.go) { opacity: 0 !important; }
+  .card.comic.on > .cm-hook.go { animation: up .6s cubic-bezier(.2, .8, .2, 1) both !important; }
+  .sfx { position: absolute; left: 50%; top: 210px; transform: translateX(-50%) rotate(-5deg); text-align: center; white-space: nowrap; }
+  .sfx b { display: block; font-size: 128px; font-weight: 900; line-height: 1.05; color: #FF3B2B; -webkit-text-stroke: 12px #fff; paint-order: stroke fill; letter-spacing: -.02em; }
+  .sfx span { display: inline-block; margin-top: 12px; padding: 8px 30px 10px; border-radius: 16px; background: var(--ink); color: #fff; font-size: 58px; font-weight: 900; border: 5px solid #fff; }
+  .sfx.in { animation: sfx .45s cubic-bezier(.2, 1.5, .4, 1) both; }
+  @keyframes sfx { from { opacity: 0; transform: translateX(-50%) rotate(-5deg) scale(.5); } to { opacity: 1; transform: translateX(-50%) rotate(-5deg) scale(1); } }
+  .bub { position: absolute; max-width: 640px; padding: 18px 32px 22px; background: #fff; color: var(--ink); border: 5px solid var(--ink);
+    border-radius: 44px; font-size: 40px; font-weight: 800; line-height: 1.32; letter-spacing: -.01em; box-shadow: 8px 9px 0 rgba(0, 0, 0, .28); }
+  .bub em { color: #E0461F; }
+  .bub .tail { position: absolute; left: -5px; top: -5px; width: 1px; height: 1px; overflow: visible; }
+  .bub .tail path { fill: #fff; stroke: var(--ink); stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
+  .bub.in { animation: bub .34s cubic-bezier(.2, 1.45, .4, 1) both; }
+  @keyframes bub { from { opacity: 0; transform: scale(.55); } to { opacity: 1; transform: scale(1); } }
+  .bub.out, .sfx.out { opacity: 0; transition: opacity .25s; }
+
   /* 커서 */
   #cur { position: absolute; left: 0; top: 0; width: 34px; height: 34px; pointer-events: none; z-index: 20; opacity: 0;
     transition-property: left, top, opacity; transition-timing-function: cubic-bezier(.5, 0, .25, 1); filter: drop-shadow(0 3px 5px rgba(0,0,0,.45)); }
@@ -127,66 +160,57 @@
 <div id="cap" hidden><div class="k"></div><div class="t"></div></div>
 
 <!-- 인트로 -->
-<section class="card" id="c-hook">
-  <p class="big">사건은 하나인데,</p>
-  <p class="big">도구는 <em>여럿</em>입니다.</p>
-</section>
-
-<section class="card" id="c-pain">
-  <div class="kick">체결이 밀린 그 순간, 지금은</div>
-  <div class="chain">
-    <div class="st"><b>1</b><span>업무 관제</span><small>응답이 느려졌다</small></div>
-    <div class="arr">→</div>
-    <div class="st"><b>2</b><span>운영 담당</span><small>어느 서버 · 프로세스?</small></div>
-    <div class="arr">→</div>
-    <div class="st"><b>3</b><span>서버 관제</span><small>“CPU 다 씀”에서 멈춤</small></div>
-    <div class="arr">→</div>
-    <div class="st"><b>4</b><span>스케줄러</span><small>누가 띄웠지?</small></div>
-    <div class="arr">→</div>
-    <div class="st bad"><b>5</b><span>개발자</span><small>폭주는 이미 끝남<br>→ 재현부터</small></div>
+<section class="card comic" id="c-comic">
+  <div class="cm-bg"></div>
+  <div class="cm-shake"><img id="cm-img" src="comic/room.jpg" alt=""></div>
+  <div class="cm-flash"></div>
+  <div id="cm-fx"></div>
+  <div id="cm-bub"></div>
+  <div class="cm-dim"></div>
+  <div class="cm-hook">
+    <p class="mid">장애는 한 건인데,</p>
+    <p class="mid">원인 찾기는 매번 <em>이 난리</em>입니다.</p>
   </div>
-  <p class="sub" style="animation-delay:3.1s">도구 셋, 다섯 단계. 원인 코드는 <em>어디에도 남지 않습니다.</em></p>
 </section>
 
 <section class="card" id="c-logo">
   <p class="big" style="font-size:150px">이음 <span style="color:var(--o-hi)">E:UM</span></p>
   <div class="bar"></div>
-  <p class="sub" style="font-size:44px;color:#fff;font-weight:700">실행 번호 하나로 <em>배치 · 서버 · 업무 · 함수</em>를 잇습니다</p>
+  <p class="sub" style="font-size:48px;color:#fff;font-weight:700">실행 번호 하나로, <em>운영 도구도 하나로.</em></p>
   <p class="team">방탄소녀단</p>
 </section>
 
 <!-- 막 표지 -->
 <section class="card" id="c-sec1">
-  <div class="kick">이음만 하는 것 <b class="nb">1</b></div>
+  <div class="kick">이음이라서 가능한 것 <b class="nb">1</b></div>
   <p class="mid">알림에서 <em>원인 함수</em>까지</p>
-  <p class="sub">장애를 다시 일으키지 않고</p>
+  <p class="sub">부하를 다시 만들어 볼 필요 없이, <em>클릭 한 번으로!</em></p>
 </section>
 
 <section class="card" id="c-sec2">
-  <div class="kick">이음만 하는 것 <b class="nb">2</b></div>
-  <p class="mid">죽은 이유를 <em>코드 한 줄</em>까지</p>
-  <p class="sub">core · 호출 스택 · 소스 · 근거를 한 장에</p>
+  <div class="kick">이음이라서 가능한 것 <b class="nb">2</b></div>
+  <p class="mid">프로세스가 <em>죽은 이유</em>?</p>
+  <p class="sub">소스 레벨까지 분석한 <em>사망 진단서</em> 한 장으로!</p>
 </section>
 
 <section class="card" id="c-more">
   <div class="kick">그리고</div>
-  <p class="mid"><em>문장 한 줄</em>이면 작업도, 보드도</p>
+  <p class="mid"><em>문장 한 줄</em>이면 배치 작업도, 관제 보드도</p>
+  <p class="sub">입맛대로 <em>초안이 뚝딱!</em></p>
 </section>
 
 <!-- 엔딩 -->
 <section class="card" id="c-end1">
-  <p class="mid">실행 번호 하나가</p>
-  <p class="mid"><em>배치 · 서버 · 업무 · 함수</em>를 잇습니다.</p>
+  <p class="mid">실행 번호 하나로</p>
+  <p class="mid"><em>운영</em>과 <em>장애 분석</em>을 한 번에 잡았습니다.</p>
   <ul class="chips">
-    <li>실행 파일 <b>하나</b></li>
-    <li>서버 <b>46대</b> · 플로우 <b>41개</b></li>
-    <li>알림 → <b>원인 함수</b></li>
-    <li>데이터는 <b>우리 DB</b> · SQL</li>
+    <li><b>단순한</b> 아키텍처</li>
+    <li><b>쉬운</b> 조작</li>
+    <li><b>머신러닝</b>으로 장애 위험 예측까지</li>
   </ul>
 </section>
 
 <section class="card" id="c-end2">
-  <p class="mid">심사는 끝났습니다.</p>
   <p class="big">판단은 <em>직접</em> 해 보세요.</p>
   <div class="cta">→ 이 부스에서 직접 눌러 볼 수 있습니다</div>
   <p class="team">이음 E:UM · 방탄소녀단</p>
@@ -230,6 +254,93 @@ function kick(k) {
   return m ? `<b class="nb">${m[1]}</b>${m[2]}` : (k || '');
 }
 
+// ---- 인트로 만화 ----
+// 그림 좌표(2000×667)로 카메라와 말하는 사람의 입을 적는다. 시각은 ms.
+const IMG = { w: 2000, h: 667 };
+const COMIC = [
+  { t: 0, cam: { cx: 1000, cy: 257, z: 1.5 }, ms: 0 },
+  { t: 40, cam: { cx: 1000, cy: 257, z: 1.85 }, ms: 1900 },
+  { t: 0, fx: 'alarm' },
+  { t: 2000, fx: 'calm', cam: { cx: 533, cy: 367, z: 1.5 }, ms: 850 },
+  { t: 2500, say: { html: '뭐야, 무슨 일이야?<br>뭐가 <em>죽은</em> 거야?', box: [440, 34], at: [306, 372] } },
+  { t: 3900, say: { html: '김 차장! 인프라 쪽 모니터링에<br>특별한 거 있는지 봐 봐!!', box: [960, 176], at: [306, 380] } },
+  { t: 6200, clear: true, cam: { cx: 700, cy: 452, z: 2.1 }, ms: 800 },
+  { t: 6700, say: { html: '근데 <em>proc_special</em>이<br>뭐 하는 프로세스야?<br>어디서 나온 거지??', box: [900, 36], at: [718, 446] } },
+  { t: 8900, clear: true, cam: { cx: 1270, cy: 452, z: 2.1 }, ms: 800 },
+  { t: 9400, say: { html: '박 사원!! 대체 뭐야,<br>아직도 <em>로그인</em>도 못 했어??', box: [56, 40], atScreen: [-120, 150] } },
+  { t: 11300, clear: true, cam: { cx: 1600, cy: 425, z: 2.0 }, ms: 800 },
+  { t: 11800, say: { html: '로그가 <em>80기가</em>라고???<br>야, 그거 열면 시스템 뻗는다고!!', box: [50, 560], at: [1766, 420] } },
+  { t: 14000, clear: true, cam: { cx: 1000, cy: 333, z: 0.8 }, ms: 1000 },
+  { t: 14700, fx: 'dim' },
+  { t: 14900, fx: 'hook' },
+  { t: 16800, end: true },
+];
+let comicTimers = [];
+let camNow = { tx: 0, ty: 0, z: 1 };
+function camTo(c, ms) {
+  const z = c.z;
+  const tx = IMG.w * z <= W ? (W - IMG.w * z) / 2 : Math.min(0, Math.max(W - IMG.w * z, W / 2 - z * c.cx));
+  const ty = IMG.h * z <= H ? (H - IMG.h * z) / 2 : Math.min(0, Math.max(H - IMG.h * z, H / 2 - z * c.cy));
+  camNow = { tx, ty, z };
+  const el = $('#cm-img');
+  el.style.transitionDuration = `${ms}ms`;
+  el.style.transform = `translate(${tx}px, ${ty}px) scale(${z})`;
+}
+// 말풍선: box(화면 좌표, 왼쪽 위)에 글을 띄우고, 꼬리를 말하는 사람의 입(그림 좌표 at, 또는 화면 좌표 atScreen)으로 뻗는다
+function say(o) {
+  const b = document.createElement('div');
+  b.className = 'bub';
+  b.innerHTML = o.html;
+  b.style.left = `${o.box[0]}px`; b.style.top = `${o.box[1]}px`;
+  $('#cm-bub').append(b);
+  const bw = b.offsetWidth, bh = b.offsetHeight, R = 46, BD = 5, HW = 22, GAP = 30;
+  const A = o.atScreen || [camNow.tx + camNow.z * o.at[0], camNow.ty + camNow.z * o.at[1]];
+  const T = [A[0] - o.box[0], A[1] - o.box[1]];
+  const c = [bw / 2, bh / 2], dx = T[0] - c[0], dy = T[1] - c[1];
+  const sx = dx ? (bw / 2) / Math.abs(dx) : Infinity, sy = dy ? (bh / 2) / Math.abs(dy) : Infinity;
+  let E, n, tg;
+  if (sx < sy) { E = [dx > 0 ? bw : 0, Math.min(bh - R, Math.max(R, c[1] + dy * sx))]; n = [dx > 0 ? -1 : 1, 0]; tg = [0, 1]; }
+  else { E = [Math.min(bw - R, Math.max(R, c[0] + dx * sy)), dy > 0 ? bh : 0]; n = [0, dy > 0 ? -1 : 1]; tg = [1, 0]; }
+  const B = [E[0] + n[0] * BD, E[1] + n[1] * BD];
+  const v = [T[0] - E[0], T[1] - E[1]], len = Math.hypot(v[0], v[1]) || 1;
+  const L = Math.max(30, len - GAP), tip = [E[0] + v[0] / len * L, E[1] + v[1] / len * L];
+  const p = (q) => `${q[0].toFixed(1)} ${q[1].toFixed(1)}`;
+  b.insertAdjacentHTML('beforeend', `<svg class="tail"><path d="M${p([B[0] + tg[0] * HW, B[1] + tg[1] * HW])} L${p(tip)} L${p([B[0] - tg[0] * HW, B[1] - tg[1] * HW])}"/></svg>`);
+  b.style.transformOrigin = `${E[0]}px ${E[1]}px`;
+  restart(b, 'in');
+}
+function clearBubbles() {
+  for (const b of document.querySelectorAll('#cm-bub .bub, #cm-fx .sfx')) { b.classList.add('out'); setTimeout(() => b.remove(), 300); }
+}
+function comicStop() { comicTimers.forEach(clearTimeout); comicTimers = []; }
+function comicPlay() {
+  comicStop();
+  $('#cm-bub').innerHTML = ''; $('#cm-fx').innerHTML = '';
+  for (const k of ['.cm-flash', '.cm-dim', '.cm-hook', '.cm-shake']) $(k).classList.remove('go', 'off');
+  let end = 0;
+  for (const st of COMIC) {
+    if (st.end) { end = st.t; continue; }
+    const run = () => {
+      if (st.cam) camTo(st.cam, st.ms || 0);
+      if (st.clear) clearBubbles();
+      if (st.say) say(st.say);
+      if (st.fx === 'alarm') {
+        $('.cm-flash').classList.add('go'); restart($('.cm-shake'), 'go');
+        comicTimers.push(setTimeout(() => {
+          $('#cm-fx').innerHTML = '<div class="sfx"><b>삐웅삐웅~</b><span>장애 발생! 장애 발생!!</span></div>';
+          restart($('#cm-fx .sfx'), 'in');
+        }, 180));
+      }
+      if (st.fx === 'calm') { $('.cm-flash').classList.replace('go', 'off'); clearBubbles(); }
+      if (st.fx === 'dim') $('.cm-dim').classList.add('go');
+      if (st.fx === 'hook') $('.cm-hook').classList.add('go');
+    };
+    if (st.t === 0) run(); else comicTimers.push(setTimeout(run, st.t));
+  }
+  return end;
+}
+const PLAY = { 'c-comic': comicPlay };
+
 window.V = window.V_ = {
   load(src) { app.src = src; },
   // 자막. kicker(작은 주황 줄)와 html(큰 줄). html이 비면 숨긴다.
@@ -259,12 +370,15 @@ window.V = window.V_ = {
     el.hidden = false;
     restart(el, 'in');
   },
+  // 전면 카드. 스스로 도는 카드(만화)는 그 길이(ms)를 돌려준다.
   card(id) {
+    comicStop();
     for (const c of document.querySelectorAll('.card')) c.classList.remove('on');
-    if (!id) return;
+    if (!id) return 0;
     const c = document.getElementById(id);
     void c.offsetWidth;
     c.classList.add('on');
+    return PLAY[id] ? PLAY[id]() : 0;
   },
   // 앱의 r = [x, y, w, h](iframe 좌표)을 자막 위 빈 곳 가운데로 키워 보인다. r이 없으면 전체.
   look(r, ms = 1000, opt = {}) {

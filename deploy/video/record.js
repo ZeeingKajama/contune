@@ -20,15 +20,17 @@ const VW = 1920, VH = 1080;
 const FLOW_ASK = '매일 18시에 batch-01에서 정산 리포트를 만들고 끝나면 dw-01에 적재';
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.ico': 'image/x-icon' };
+  '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.ico': 'image/x-icon' };
 
-// /director.html은 이 폴더에서, 나머지는 .run/에서
+// /director.html과 /comic/은 이 폴더에서, 나머지는 .run/에서
 function serve() {
   return new Promise((resolve) => {
     const srv = http.createServer((req, res) => {
       const u = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-      const file = u === '/director.html' ? path.join(__dirname, 'director.html') : path.join(RUN, path.normalize(u).replace(/^(\.\.[/\\])+/, ''));
-      if (!file.startsWith(RUN) && file !== path.join(__dirname, 'director.html')) { res.writeHead(403); res.end(); return; }
+      const rel = path.normalize(u).replace(/^(\.\.[/\\])+/, '');
+      const mine = u === '/director.html' || u.startsWith('/comic/');
+      const file = mine ? path.join(__dirname, rel) : path.join(RUN, rel);
+      if (!file.startsWith(mine ? __dirname : RUN)) { res.writeHead(403); res.end(); return; }
       fs.readFile(file, (err, buf) => {
         if (err) { log('[404]', u); res.writeHead(404); res.end(); return; }
         res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
@@ -157,10 +159,11 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
   for (const sh of SHOTS) {
     if (sh.card) {
       log(`카드 ${sh.card}`);
-      await V((id) => { V_.cap('', ''); V_.punch(null); V_.cursorOff(); V_.look(null, 0); V_.card(id); }, sh.card);
+      // 스스로 도는 카드(만화)는 길이를 돌려준다. shots.js에 dur가 없으면 그 길이로 찍는다.
+      const own = await V((id) => { V_.cap('', ''); V_.punch(null); V_.cursorOff(); V_.look(null, 0); return V_.card(id); }, sh.card);
       await sleep(60);
       const a = now();
-      await sleep(sh.dur * 1000);
+      await sleep(sh.dur ? sh.dur * 1000 : own);
       seg(a, now(), sh.card);
       arrived = false;
       continue;

@@ -2,7 +2,7 @@
 // 글을 고치려면 이 파일만 고치고 deploy/video/make.sh를 다시 돌린다.
 //
 // 한 줄(shot)의 필드
-//   card   director.html의 전면 카드 id(인트로 · 막 표지 · 엔딩). dur초 동안 보인다.
+//   card   director.html의 전면 카드 id(인트로 만화 · 막 표지 · 엔딩). dur초 동안 보인다(만화는 dur 없이 제 길이만큼).
 //   stop   써밋 시연판 장면 id(guide/show/*.js). 그 장면을 차린 뒤 dur초 찍는다.
 //          앞 shot이 click으로 넘어왔으면 그 장면에 이미 와 있다(엔진이 press를 대신 하고 다음 장면을 차림).
 //   k, t   자막: k는 작은 주황 머리글(막 이름, 숫자로 시작하면 숫자가 동그라미), t는 큰 줄(HTML, <em>은 주황 강조).
@@ -26,9 +26,8 @@ const KM = '+ 그 밖에';
 
 module.exports = [
   // ---- 인트로 ----
-  { card: 'c-hook', dur: 3.4 },
-  { card: 'c-pain', dur: 6.4 },
-  { card: 'c-logo', dur: 3.4 },
+  { card: 'c-comic' },          // 상황실 만화(길이는 director.html의 COMIC 순서가 정한다, 약 17초)
+  { card: 'c-logo', dur: 3.2 },
 
   // ---- ① 한 화면 관제 ----
   { stop: 'brief', k: K1, t: '열자마자 AI 브리핑, <em>원인 후보 함수</em>까지 먼저 짚습니다', look: 'target', dur: 4.2 },
@@ -36,7 +35,7 @@ module.exports = [
   { stop: 'bizflow', k: K1, t: '채널 → 체결 → 시세 → 지수 → 분배, <em>막힌 곳만 붉게</em>', look: 'target', dur: 3.8 },
 
   // ---- ② 알림에서 원인 함수까지 ----
-  { card: 'c-sec1', dur: 2.5 },
+  { card: 'c-sec1', dur: 3.2 },
   { stop: 'trace', k: K2, t: '체결 대기 큐 <em>위험</em> 알림. ✦ 원인을 누르면', look: [990, 480, 600, 320], click: true, dur: 3.2 },
   { stop: 'steps', k: K2, t: '알림 → 주인 찾기 → 구간 나누기 → 함수 비교, <em>이음이 대신</em> 따라갑니다', look: [937, 83, 647, 420], dur: 4.2 },
   { stop: 'fn', k: K2, t: '평소(A)와 알림 구간(B)을 견주니 <em><code>book_insert</code> 15% → 63%</em>', look: 'target', dur: 4.4 },
@@ -48,7 +47,7 @@ module.exports = [
   { stop: 'lineage', k: K2, t: '이 서비스를 띄운 <em>실행 › 스텝 › 프로세스</em>까지 번호 하나로', look: [276, 100, 1000, 200], dur: 4.0 },
 
   // ---- ③ 죽은 이유를 코드 한 줄까지 ----
-  { card: 'c-sec2', dur: 2.5 },
+  { card: 'c-sec2', dur: 3.0 },
   { stop: 'report', k: K3, t: '서비스가 죽으면 한 장: <em><code>book_insert</code>에서 NULL 역참조</em>', look: [276, 60, 1308, 400], dur: 4.0 },
   { stop: 'stack', k: K3, t: 'core에서 꺼낸 <em>호출 스택</em>, 크래시 지점 #0', look: [276, 291, 900, 260], dur: 3.2 },
   { stop: 'source', k: K3, t: '저장소에서 소스를 찾아 <em>죽은 줄 119</em>를 칠해 둡니다', look: [276, 200, 800, 330], dur: 4.2 },
@@ -64,7 +63,7 @@ module.exports = [
   { stop: 'sql', k: K5, t: '쌓인 데이터는 <em>우리 DB</em>에. 표준 SQL로 꺼내 통계 · 학습에', look: [40, 60, 1060, 440], dur: 4.6 },
 
   // ---- 몽타주: AI 초안 + 그 밖에 ----
-  { card: 'c-more', dur: 2.0 },
+  { card: 'c-more', dur: 2.8 },
   { stop: 'aiflow', k: KF, t: '바라는 작업을 <em>문장 한 줄</em>로 적으면', custom: 'aiflow' },
   { stop: 'aiflowed', k: KF, t: '스텝 둘 + 매일 18:00 스케줄 초안, <em>검증을 통과해야 저장</em>', dur: 2.8 },
   { stop: 'aidash', k: KB, t: '보드도 <em>문장 한 줄</em>로 위젯을 더합니다', click: true, dur: 1.4 },
@@ -78,5 +77,5 @@ module.exports = [
 
   // ---- 엔딩 ----
   { card: 'c-end1', dur: 4.2 },
-  { card: 'c-end2', dur: 6.0 },
+  { card: 'c-end2', dur: 5.5 },
 ];
