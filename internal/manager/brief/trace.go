@@ -633,7 +633,7 @@ func (s *Service) traceRule(t *Trace) Diagnosis {
 		}
 		return d
 	case "collecting":
-		d.Title = "원인 추적 중 — " + t.Note
+		d.Title = "원인 분석 중 — " + t.Note
 		d.Detail = "프로파일은 10초 주기 수집 — 샘플이 차면 자동 재계산"
 		cite("owner", "window")
 		return d
@@ -695,11 +695,11 @@ func (s *Service) traceRule(t *Trace) Diagnosis {
 	}
 	// 점검 항목
 	if top != nil && t.Compared && top.Diff >= 3 {
-		d.NextChecks = append(d.NextChecks, fmt.Sprintf("타임머신 B 구간 플레임 그래프에서 %s 콜스택 확인", top.Leaf))
+		d.NextChecks = append(d.NextChecks, fmt.Sprintf("B 구간 플레임 그래프에서 %s 호출 경로 확인", top.Leaf))
 		if m, ok := t.risingTraffic(); ok {
 			d.NextChecks = append(d.NextChecks, fmt.Sprintf("%s 급증 출처 확인(정상 거래 / 재시도·비정상 호출)", m.Title))
 		}
-		d.NextChecks = append(d.NextChecks, fmt.Sprintf("%s의 입력 크기 비례 연산(반복·탐색)·락 경합 확인", top.Leaf))
+		d.NextChecks = append(d.NextChecks, fmt.Sprintf("%s의 입력 규모 비례 연산(반복·탐색)·락 경합 점검", top.Leaf))
 	} else {
 		d.NextChecks = append(d.NextChecks, "동시간대 서버 CPU·디스크·네트워크, 외부 호출 대기 확인")
 	}
@@ -729,13 +729,26 @@ func (t *Trace) metricSentence(n int) string {
 		if len(parts) >= n || m.A == nil {
 			continue
 		}
-		p := fmt.Sprintf("%s %s → %s", m.Title, num(*m.A), withUnit(m.B, m.Unit))
-		if r, ok := ratio(*m.A, m.B); ok {
-			p += "(" + r + ")"
-		}
-		parts = append(parts, p)
+		parts = append(parts, metricText(m))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// metricText는 지표 하나의 A → B 변화다: "주문 유입량 1,500 → 6,000 TPS(×4.0)". m.A가 있어야 한다.
+func metricText(m MetricChange) string {
+	p := fmt.Sprintf("%s %s → %s", m.Title, num(*m.A), withUnit(m.B, m.Unit))
+	if r, ok := ratio(*m.A, m.B); ok {
+		p += "(" + r + ")"
+	}
+	return p
+}
+
+// triggerSentence는 유발 요인 한 줄이다: 1.5배 넘게 오른 트래픽 지표(없으면 "").
+func (t *Trace) triggerSentence() string {
+	if m, ok := t.risingTraffic(); ok {
+		return metricText(m)
+	}
+	return ""
 }
 
 // risingTraffic은 1.5배 넘게 오른 트래픽 지표(패널 타일 signal: traffic)다.
