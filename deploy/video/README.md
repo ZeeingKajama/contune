@@ -1,0 +1,18 @@
+# 부스 소개 영상
+
+테크서밋 부스에서 틀어 둘 약 2분(2:09) 소개 영상을 써밋 시연판 화면으로 찍어 만든다. 소리는 없고 큰 자막으로 읽힌다.
+
+    deploy/video/make.sh        # → .run/video/eum-booth.mp4 (1920×1080 · 30fps)
+
+| 파일 | 하는 일 |
+|---|---|
+| `shots.js` | **촬영 순서와 자막 글.** 장면 id(`guide/show/*.js`) · 자막 · 확대할 곳 · 길이. 글만 고치려면 이 파일만 고친다 |
+| `director.html` | 촬영 무대: 가운데 iframe에 시연판, 위에 큰 자막 · 숫자 카드 · 전면 카드(인트로 · 막 표지 · 엔딩) · 커서 |
+| `record.js` | Playwright로 무대를 띄워 장면을 차리고 화면을 녹화(DevTools 화면 전송). 장면을 차리는 동안은 버리고 shot 구간만 남긴다 |
+| `compose.py` | 구간을 30fps로 뽑아 짧은 디졸브로 잇고 H.264로 굽는다(무음 트랙 포함) |
+
+줄거리: 문제(도구 셋, 다섯 단계) → ① 한 화면 관제 → ② 알림에서 원인 함수까지(`book_insert` 15% → 63%) → ③ 종료 보고서(죽은 줄 119) → ④ 배치(재시도 · 보류 까닭) → ⑤ 데이터 주권(SQL) → AI 초안(문장으로 플로우 · 보드) · 위험도 · 로그 · 감사 · 벽면 → 엔딩.
+
+- 값은 summit 세계에서 고정인 것만 쓴다. 엔딩에 "모의 데이터 · AI 문장은 준비된 예시" 공시가 있다.
+- 필요: node + Playwright(Chromium), python3 + Pillow, ffmpeg, 한글 글꼴(Pretendard 권장. 리눅스는 fontconfig에서 sans-serif를 Pretendard로).
+- 한 번 굽는 데 약 4분(촬영 3분 + 잇기 1분), 프레임 임시 파일 약 0.6GB(`.run/video/frames`).

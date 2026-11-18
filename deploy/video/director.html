@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>이음 부스 영상</title>
+<!--
+  부스 소개 영상의 촬영 무대. record.js가 이 페이지를 1600×900(배율 1.2 = 1920×1080)으로 띄우고 화면을 녹화한다.
+  가운데 iframe에 써밋 시연판(.run/summit-demo)을 띄우고, 그 위에 큰 자막 · 강조 카드 · 전면 카드 · 커서를 겹친다.
+  촬영 순서와 글은 shots.js, 이 파일은 모양과 window.V(무대 조작)만 갖는다.
+-->
+<style>
+  :root {
+    --o: #ED6D1E;        /* 회사색 주황 */
+    --o-hi: #FF9A4D;     /* 어두운 바탕 위 강조 글자 */
+    --ink: #1F1D1B;
+    --paper: #FAF7F2;
+    --cap-bg: rgba(24, 22, 20, .93);
+    --red: #FF6B5A;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--ink); color: var(--paper);
+    font-family: Pretendard, system-ui, sans-serif; -webkit-font-smoothing: antialiased; word-break: keep-all; }
+  /* 좌표는 1600×900으로 쓰고 통째로 1.2배(= 1920×1080)로 그린다: 화면 녹화가 CSS 픽셀 크기로 찍히기 때문 */
+  #stage { position: relative; width: 1600px; height: 900px; overflow: hidden; transform: scale(1.2); transform-origin: 0 0; }
+  em { font-style: normal; color: var(--o-hi); }
+
+  /* 앱 화면 */
+  #app { position: absolute; left: 0; top: 0; width: 1600px; height: 900px; border: 0; background: #fff;
+    transform-origin: 0 0; transition-property: transform; transition-timing-function: cubic-bezier(.45, 0, .2, 1); }
+  #dim { position: absolute; inset: 0; background: rgba(18, 16, 14, 0); transition: background .45s; pointer-events: none; }
+  #dim.on { background: rgba(18, 16, 14, .62); }
+
+  /* 큰 자막: 아래 가운데, 굵고 크게 */
+  #cap { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); width: max-content; max-width: 1500px;
+    padding: 18px 44px 22px 40px; border-radius: 22px; background: var(--cap-bg);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 18px 50px rgba(0,0,0,.45); border-left: 10px solid var(--o); }
+  #cap[hidden] { display: none; }
+  #cap .k { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; color: var(--o-hi); font-size: 23px; font-weight: 800; letter-spacing: .01em; }
+  #cap .k:empty { display: none; }
+  #cap .t { font-size: 45px; font-weight: 800; line-height: 1.28; color: #fff; letter-spacing: -.01em; }
+  #cap .t code, .pn code { font-family: "DejaVu Sans Mono", ui-monospace, monospace; font-size: .9em; letter-spacing: -.02em; }
+  #cap.top { bottom: auto; top: 24px; }
+  #cap.in { animation: cap-in .38s cubic-bezier(.2, .8, .2, 1) both; }
+  #cap.top.in { animation-name: cap-in-top; }
+  @keyframes cap-in-top { from { opacity: 0; transform: translate(-50%, -18px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  .nb { display: inline-grid; place-items: center; width: 1.45em; height: 1.45em; border-radius: 50%; background: var(--o); color: #fff;
+    font-size: .95em; font-weight: 800; line-height: 1; margin-right: .1em; font-variant-numeric: tabular-nums; }
+  @keyframes cap-in { from { opacity: 0; transform: translate(-50%, 18px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+  /* 강조 카드(숫자 한 방) */
+  #punch { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); padding: 34px 70px 40px; border-radius: 30px;
+    background: rgba(31, 29, 27, .96); border: 4px solid var(--o); text-align: center; box-shadow: 0 30px 80px rgba(0,0,0,.6); min-width: 760px; }
+  #punch[hidden] { display: none; }
+  #punch.in { animation: pop .5s cubic-bezier(.2, 1.3, .3, 1) both; }
+  @keyframes pop { from { opacity: 0; transform: translate(-50%, -50%) scale(.82); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+  .pn .pk { color: var(--o-hi); font-size: 30px; font-weight: 800; }
+  .pn .pm { margin-top: 6px; font-size: 76px; font-weight: 800; color: #fff; }
+  .pn .pv { margin-top: 2px; font-size: 118px; font-weight: 900; color: var(--o-hi); line-height: 1.05; letter-spacing: -.02em; }
+  .pn .pv small { font-size: .5em; color: #d8d2cb; font-weight: 800; }
+  .pn .ps { margin-top: 14px; font-size: 32px; font-weight: 700; color: #e9e4de; }
+
+  /* 전면 카드(인트로 · 막 표지 · 엔딩) */
+  .card { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    background: radial-gradient(1200px 700px at 50% 38%, #2b2723 0%, var(--ink) 70%); }
+  .card.on { display: flex; }
+  .card > * { opacity: 0; }
+  .card.on > * { animation: up .6s cubic-bezier(.2, .8, .2, 1) both; }
+  .card.on > :nth-child(2) { animation-delay: .35s; }
+  .card.on > :nth-child(3) { animation-delay: .75s; }
+  .card.on > :nth-child(4) { animation-delay: 1.1s; }
+  .card.on > :nth-child(5) { animation-delay: 1.45s; }
+  .card.on > :nth-child(6) { animation-delay: 1.8s; }
+  @keyframes up { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
+
+  .big { margin: 0; font-size: 100px; font-weight: 800; line-height: 1.2; letter-spacing: -.02em; }
+  .mid { margin: 0; font-size: 70px; font-weight: 800; line-height: 1.22; letter-spacing: -.02em; }
+  .kick { margin-bottom: 22px; color: var(--o-hi); font-size: 34px; font-weight: 800; letter-spacing: .04em; }
+  .sub { margin-top: 30px; font-size: 36px; font-weight: 600; color: #d9d3cc; }
+  .bar { width: 140px; height: 8px; border-radius: 4px; background: var(--o); margin: 30px 0 6px; }
+  .team { margin-top: 26px; font-size: 30px; color: #a9a29a; font-weight: 600; }
+  .note { position: absolute; bottom: 34px; left: 0; right: 0; font-size: 21px; color: #9c958d; font-weight: 500; }
+  .card.on > .note { animation-delay: 1.2s; }
+
+  /* 지금의 5단계 */
+  .chain { display: flex; align-items: stretch; gap: 14px; margin-top: 10px; }
+  .chain > * { opacity: 0; }
+  .card.on .chain > * { animation: up .45s cubic-bezier(.2, .8, .2, 1) both; }
+  .card.on .chain > :nth-child(1) { animation-delay: .5s; }
+  .card.on .chain > :nth-child(2) { animation-delay: .8s; }
+  .card.on .chain > :nth-child(3) { animation-delay: 1.1s; }
+  .card.on .chain > :nth-child(4) { animation-delay: 1.4s; }
+  .card.on .chain > :nth-child(5) { animation-delay: 1.7s; }
+  .card.on .chain > :nth-child(6) { animation-delay: 2.0s; }
+  .card.on .chain > :nth-child(7) { animation-delay: 2.3s; }
+  .card.on .chain > :nth-child(8) { animation-delay: 2.6s; }
+  .card.on .chain > :nth-child(9) { animation-delay: 2.9s; }
+  .st { width: 236px; padding: 20px 14px 22px; border-radius: 20px; background: #2f2b27; border: 2px solid #4a443e; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .st b { width: 44px; height: 44px; border-radius: 50%; background: #4a443e; color: #fff; display: grid; place-items: center; font-size: 24px; }
+  .st span { font-size: 32px; font-weight: 800; }
+  .st small { font-size: 22px; color: #cfc8c0; font-weight: 600; line-height: 1.35; }
+  .st.bad { border-color: var(--red); background: #3a2420; }
+  .st.bad b { background: var(--red); }
+  .st.bad small { color: #ffb4a8; }
+  .arr { align-self: center; font-size: 34px; color: #7c746b; font-weight: 800; }
+
+  /* 엔딩 칩 */
+  .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; margin-top: 40px; max-width: 1400px; }
+  .chips li { list-style: none; padding: 14px 30px; border-radius: 40px; border: 2px solid #5a534b; font-size: 30px; font-weight: 700; color: #f1ece6; }
+  .chips li b { color: var(--o-hi); }
+  .cta { margin-top: 34px; padding: 18px 40px; border-radius: 50px; background: var(--o); color: #fff; font-size: 36px; font-weight: 800; }
+
+  /* 커서 */
+  #cur { position: absolute; left: 0; top: 0; width: 34px; height: 34px; pointer-events: none; z-index: 20; opacity: 0;
+    transition-property: left, top, opacity; transition-timing-function: cubic-bezier(.5, 0, .25, 1); filter: drop-shadow(0 3px 5px rgba(0,0,0,.45)); }
+  #cur.on { opacity: 1; }
+  #rip { position: absolute; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; border: 4px solid var(--o); pointer-events: none; opacity: 0; z-index: 19; }
+  #rip.go { animation: rip .55s ease-out both; }
+  @keyframes rip { from { opacity: 1; transform: scale(.6); } to { opacity: 0; transform: scale(4.2); } }
+</style>
+</head>
+<body>
+<div id="stage">
+<iframe id="app" title="이음"></iframe>
+<div id="dim"></div>
+
+<div id="punch" class="pn" hidden></div>
+<div id="cap" hidden><div class="k"></div><div class="t"></div></div>
+
+<!-- 인트로 -->
+<section class="card" id="c-hook">
+  <p class="big">사건은 하나인데,</p>
+  <p class="big">도구는 <em>여럿</em>입니다.</p>
+</section>
+
+<section class="card" id="c-pain">
+  <div class="kick">체결이 밀린 그 순간, 지금은</div>
+  <div class="chain">
+    <div class="st"><b>1</b><span>업무 관제</span><small>응답이 느려졌다</small></div>
+    <div class="arr">→</div>
+    <div class="st"><b>2</b><span>운영 담당</span><small>어느 서버 · 프로세스?</small></div>
+    <div class="arr">→</div>
+    <div class="st"><b>3</b><span>서버 관제</span><small>“CPU 다 씀”에서 멈춤</small></div>
+    <div class="arr">→</div>
+    <div class="st"><b>4</b><span>스케줄러</span><small>누가 띄웠지?</small></div>
+    <div class="arr">→</div>
+    <div class="st bad"><b>5</b><span>개발자</span><small>폭주는 이미 끝남<br>→ 재현부터</small></div>
+  </div>
+  <p class="sub" style="animation-delay:3.1s">도구 셋, 다섯 단계. 원인 코드는 <em>어디에도 남지 않습니다.</em></p>
+</section>
+
+<section class="card" id="c-logo">
+  <p class="big" style="font-size:150px">이음 <span style="color:var(--o-hi)">E:UM</span></p>
+  <div class="bar"></div>
+  <p class="sub" style="font-size:44px;color:#fff;font-weight:700">실행 번호 하나로 <em>배치 · 서버 · 업무 · 함수</em>를 잇습니다</p>
+  <p class="team">방탄소녀단</p>
+</section>
+
+<!-- 막 표지 -->
+<section class="card" id="c-sec1">
+  <div class="kick">이음만 하는 것 <b class="nb">1</b></div>
+  <p class="mid">알림에서 <em>원인 함수</em>까지</p>
+  <p class="sub">장애를 다시 일으키지 않고</p>
+</section>
+
+<section class="card" id="c-sec2">
+  <div class="kick">이음만 하는 것 <b class="nb">2</b></div>
+  <p class="mid">죽은 이유를 <em>코드 한 줄</em>까지</p>
+  <p class="sub">core · 호출 스택 · 소스 · 근거를 한 장에</p>
+</section>
+
+<section class="card" id="c-more">
+  <div class="kick">그리고</div>
+  <p class="mid"><em>문장 한 줄</em>이면 작업도, 보드도</p>
+</section>
+
+<!-- 엔딩 -->
+<section class="card" id="c-end1">
+  <p class="mid">실행 번호 하나가</p>
+  <p class="mid"><em>배치 · 서버 · 업무 · 함수</em>를 잇습니다.</p>
+  <ul class="chips">
+    <li>실행 파일 <b>하나</b></li>
+    <li>서버 <b>46대</b> · 플로우 <b>41개</b></li>
+    <li>알림 → <b>원인 함수</b></li>
+    <li>데이터는 <b>우리 DB</b> · SQL</li>
+  </ul>
+</section>
+
+<section class="card" id="c-end2">
+  <p class="mid">심사는 끝났습니다.</p>
+  <p class="big">판단은 <em>직접</em> 해 보세요.</p>
+  <div class="cta">→ 이 부스에서 직접 눌러 볼 수 있습니다</div>
+  <p class="team">이음 E:UM · 방탄소녀단</p>
+  <p class="note">화면의 서버와 수치는 모의 데이터이고, AI 문장은 준비된 예시입니다.</p>
+</section>
+
+<svg id="cur" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2 L3 19.5 L7.6 15.3 L10.6 22 L13.6 20.7 L10.7 14.1 L17 14.1 Z" fill="#fff" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/></svg>
+<div id="rip"></div>
+</div>
+
+<script>
+// 무대 조작. record.js가 page.evaluate로 부른다. 좌표는 모두 CSS px(1600×900).
+const W = 1600, H = 900;
+const $ = (s) => document.querySelector(s);
+const app = $('#app');
+let view = { s: 1, tx: 0, ty: 0 };
+
+function restart(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+
+// 자막이 차지하는 높이(가장자리 여백 포함)와 자리
+let capH = 0, capTop = false;
+const GAP = 30;
+// r을 자막이 비운 곳 가운데로 키울 때의 변환. hidden: r이 자막에 가린 높이
+function plan(r, opt, top) {
+  const y0 = top ? capH : 0, y1 = top ? H : H - capH;
+  const availH = y1 - y0 - 10;
+  let s = Math.min(opt.max || 2.2, (W * 0.94) / r[2], (availH * 0.94) / r[3]);
+  if (opt.scale) s = opt.scale;
+  s = Math.max(1, s);
+  let tx = W / 2 - s * (r[0] + r[2] / 2);
+  let ty = y0 + availH / 2 + 4 - s * (r[1] + r[3] / 2);
+  tx = Math.min(0, Math.max(W - W * s, tx));
+  ty = Math.min(0, Math.max(H - H * s, ty));
+  const t = ty + s * r[1], b = ty + s * (r[1] + r[3]);
+  const hidden = capH ? (top ? Math.max(0, capH - t) : Math.max(0, b - (H - capH))) : 0;
+  return { s, tx, ty, hidden };
+}
+// 머리글: '1 한 화면 관제'처럼 숫자로 시작하면 숫자를 주황 동그라미로
+function kick(k) {
+  const m = /^(\d)\s+(.*)$/.exec(k || '');
+  return m ? `<b class="nb">${m[1]}</b>${m[2]}` : (k || '');
+}
+
+window.V = window.V_ = {
+  load(src) { app.src = src; },
+  // 자막. kicker(작은 주황 줄)와 html(큰 줄). html이 비면 숨긴다.
+  // r(확대할 곳)을 주면, 아래 자막이 r을 가릴 때 자막을 위로 올린다.
+  cap(kicker, html, r, opt = {}) {
+    const c = $('#cap');
+    if (!html) { c.hidden = true; c.dataset.t = ''; capH = 0; return; }
+    const same = !c.hidden && c.dataset.k === (kicker || '') && c.dataset.t === html;
+    c.dataset.k = kicker || ''; c.dataset.t = html;
+    c.querySelector('.k').innerHTML = kick(kicker);
+    c.querySelector('.t').innerHTML = html;
+    c.hidden = false;
+    capH = c.getBoundingClientRect().height + GAP;
+    let top = false;
+    if (r) {
+      const pb = plan(r, opt, false);
+      if (pb.hidden > 30) { const pt = plan(r, opt, true); top = pt.hidden < pb.hidden; }
+    }
+    if (top !== capTop) { capTop = top; c.classList.toggle('top', top); }
+    if (!same) restart(c, 'in');
+  },
+  punch(p) {
+    const el = $('#punch');
+    $('#dim').classList.toggle('on', !!p);
+    if (!p) { el.hidden = true; return; }
+    el.innerHTML = `${p.k ? `<div class="pk">${p.k}</div>` : ''}${p.m ? `<div class="pm">${p.m}</div>` : ''}${p.v ? `<div class="pv">${p.v}</div>` : ''}${p.s ? `<div class="ps">${p.s}</div>` : ''}`;
+    el.hidden = false;
+    restart(el, 'in');
+  },
+  card(id) {
+    for (const c of document.querySelectorAll('.card')) c.classList.remove('on');
+    if (!id) return;
+    const c = document.getElementById(id);
+    void c.offsetWidth;
+    c.classList.add('on');
+  },
+  // 앱의 r = [x, y, w, h](iframe 좌표)을 자막 위 빈 곳 가운데로 키워 보인다. r이 없으면 전체.
+  look(r, ms = 1000, opt = {}) {
+    view = r ? plan(r, opt, capTop) : { s: 1, tx: 0, ty: 0 };
+    const { s, tx, ty } = view;
+    app.style.transitionDuration = `${ms}ms`;
+    app.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+    return view;
+  },
+  // 앱 좌표 → 무대 좌표(끝난 뒤의 확대 기준)
+  toStage(x, y) { return [view.tx + view.s * x, view.ty + view.s * y]; },
+  cursor(x, y, ms = 0) {
+    const c = $('#cur');
+    c.style.transitionDuration = `${ms}ms, ${ms}ms, 200ms`;
+    c.style.left = `${x}px`; c.style.top = `${y}px`;
+    c.classList.add('on');
+  },
+  cursorOff() { $('#cur').classList.remove('on'); },
+  click() {
+    const c = $('#cur'), r = $('#rip');
+    r.style.left = `${parseFloat(c.style.left) + 4}px`; r.style.top = `${parseFloat(c.style.top) + 3}px`;
+    restart(r, 'go');
+  },
+};
+const q = new URLSearchParams(location.search).get('app');
+if (q) V.load(q);
+</script>
+</body>
+</html>
